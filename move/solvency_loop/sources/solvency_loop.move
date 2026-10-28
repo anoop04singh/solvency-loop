@@ -1,208 +1,273 @@
 module solvency_loop::core {
-    use sui::object::{Self, UID, ID};
-    use sui::tx_context::{Self, TxContext};
-    use sui::transfer;
+    use std::string::{String};
     use sui::coin::{Self, Coin};
     use sui::balance::{Self, Balance};
     use sui::clock::{Self, Clock};
-    use sui::table::{Self, Table};
-    use sui::dynamic_object_field as dof;
-    use std::string::{String};
-    use std::vector;
+    use sui::dynamic_field as df;
+    use sui::vec_map::{Self, VecMap};
+    use sui::event;
 
-    // Error codes
-    const EUnauthorized: u64 = 1;
-    const EVaultStillLocked: u64 = 2;
-    const EParticipantNotFound: u64 = 3;
-    const EAlreadySettled: u64 = 4;
-    const EInsufficientSplitAmount: u64 = 5;
+    // === Error Constants ===
+    const ECooldownStillActive: u64 = 101;
+    const ENotAuthorized: u64 = 102;
+    const EInvalidSplitAmount: u64 = 103;
+    const EAlreadySettled: u64 = 104;
+    const EProfileNotFound: u64 = 105;
 
-    /// Shared Global Solvency Registry
-    /// Zero Database Architecture: all profiles, social graphs, and vaults are bound here
+    // === 1. Shared On-Chain User Registry (Zero-DB User & Contact Management) ===
     public struct SolvencyRegistry has key {
         id: UID,
         total_users: u64,
-        total_settlements_processed: u64,
-        registered_addresses: Table<address, bool>,
     }
 
-    /// On-Chain User Profile (stored as dynamic object field on SolvencyRegistry or owned)
-    public struct UserProfile has key, store {
-        id: UID,
-        owner: address,
+    public struct UserProfile has store, copy, drop {
+        wallet: address,
         handle: String,
-        trust_score: u64, // 0 - 100
-        contacts: vector<address>,
-        created_at_epoch: u64,
-        total_settled_volume: u64,
+        memwal_account_id: address,
+        safe_floor_usdc: u64,
+        contacts: VecMap<address, String>,
+        registered_at_ms: u64,
     }
 
-    /// Split Proposal stored as a shared object or referenced via Dynamic Field
-    public struct SplitProposal<phantom CoinType> has key, store {
-        id: UID,
-        initiator: address,
-        description: String,
-        total_amount: u64,
-        participants: vector<address>,
-        shares: vector<u64>,
-        settled_mask: vector<bool>,
-        escrow: Balance<CoinType>,
-        is_completed: bool,
-    }
-
-    /// Impulse Cooldown Vault holding locked funds until unlock epoch / timestamp
-    public struct CooldownVault<phantom CoinType> has key, store {
+    // === 2. Regret-Shielded 24-Hour Cooldown Vault ===
+    public struct CooldownVault<phantom T> has key, store {
         id: UID,
         owner: address,
-        locked_balance: Balance<CoinType>,
-        unlock_timestamp_ms: u64,
-        created_timestamp_ms: u64,
-        reason: String,
-        guardian_approvals: vector<address>,
+        locked_balance: Balance<T>,
+        unlock_time_ms: u64,
+        trigger_memory_namespace: String,
     }
 
-    /// Module initializer creating the shared registry
+    // === 3. Multi-Wallet Group Split & Upfront Micro-Escrow ===
+    public struct ParticipantShare has store, copy, drop {
+        debtor: address,
+        amount_owed: u64,
+        requires_upfront_escrow: bool,
+        is_settled: bool,
+        settled_at_ms: u64,
+    }
+
+    public struct GroupSplitEscrow<phantom T> has key {
+        id: UID,
+        creator: address,
+        title: String,
+        total_bill_amount: u64,
+        escrowed_balance: Balance<T>,
+        participants: VecMap<address, ParticipantShare>,
+        created_at_ms: u64,
+    }
+
+    // === Events for Tatum RPC Indexing (suix_queryEvents) ===
+    public struct UserRegisteredEvent has copy, drop {
+        wallet: address,
+        handle: String,
+        memwal_account_id: address,
+        safe_floor_usdc: u64,
+    }
+
+    public struct SplitCreatedEvent has copy, drop {
+        split_id: ID,
+        creator: address,
+        title: String,
+        total_amount: u64,
+        created_at_ms: u64,
+    }
+
+    public struct ShareSettledEvent has copy, drop {
+        split_id: ID,
+        payer: address,
+        recipient: address,
+        amount: u64,
+        was_escrow_enforced: bool,
+        settled_at_ms: u64,
+    }
+
+    public struct CooldownLockedEvent has copy, drop {
+        vault_id: ID,
+        owner: address,
+        amount: u64,
+        unlock_time_ms: u64,
+        namespace: String,
+    }
+
     fun init(ctx: &mut TxContext) {
         let registry = SolvencyRegistry {
             id: object::new(ctx),
             total_users: 0,
-            total_settlements_processed: 0,
-            registered_addresses: table::new(ctx),
         };
         transfer::share_object(registry);
     }
 
-    /// Register a user profile on Sui Mainnet attached to the shared registry
-    public entry fun register_profile(
+    public entry fun register_user(
         registry: &mut SolvencyRegistry,
         handle: String,
+        memwal_account_id: address,
+        safe_floor_usdc: u64,
+        clock: &Clock,
         ctx: &mut TxContext
     ) {
         let sender = tx_context::sender(ctx);
-        let profile = UserProfile {
-            id: object::new(ctx),
-            owner: sender,
-            handle,
-            trust_score: 100,
-            contacts: vector::empty<address>(),
-            created_at_epoch: tx_context::epoch(ctx),
-            total_settled_volume: 0,
+        if (df::exists_(&registry.id, sender)) {
+            let profile: &mut UserProfile = df::borrow_mut(&mut registry.id, sender);
+            profile.handle = handle;
+            profile.memwal_account_id = memwal_account_id;
+            profile.safe_floor_usdc = safe_floor_usdc;
+        } else {
+            let profile = UserProfile {
+                wallet: sender,
+                handle,
+                memwal_account_id,
+                safe_floor_usdc,
+                contacts: vec_map::empty(),
+                registered_at_ms: clock::timestamp_ms(clock),
+            };
+            df::add(&mut registry.id, sender, profile);
+            registry.total_users = registry.total_users + 1;
         };
 
-        let profile_id = object::id(&profile);
-        dof::add(&mut registry.id, sender, profile);
-        table::add(&mut registry.registered_addresses, sender, true);
-        registry.total_users = registry.total_users + 1;
+        event::emit(UserRegisteredEvent {
+            wallet: sender,
+            handle,
+            memwal_account_id,
+            safe_floor_usdc,
+        });
     }
 
-    /// Add a verified contact to the on-chain social graph
     public entry fun add_contact(
         registry: &mut SolvencyRegistry,
-        contact: address,
+        friend_wallet: address,
+        friend_handle: String,
         ctx: &mut TxContext
     ) {
         let sender = tx_context::sender(ctx);
-        let profile = dof::borrow_mut<address, UserProfile>(&mut registry.id, sender);
-        assert!(profile.owner == sender, EUnauthorized);
-        if (!vector::contains(&profile.contacts, &contact)) {
-            vector::push_back(&mut profile.contacts, contact);
+        assert!(df::exists_(&registry.id, sender), EProfileNotFound);
+        let profile: &mut UserProfile = df::borrow_mut(&mut registry.id, sender);
+        if (vec_map::contains(&profile.contacts, &friend_wallet)) {
+            let (_, _) = vec_map::remove(&mut profile.contacts, &friend_wallet);
         };
+        vec_map::insert(&mut profile.contacts, friend_wallet, friend_handle);
     }
 
-    /// Create an on-chain bill split proposal
-    public entry fun create_split_proposal<CoinType>(
-        description: String,
-        participants: vector<address>,
-        shares: vector<u64>,
-        total_amount: u64,
+    public entry fun create_group_split<T>(
+        title: String,
+        total_bill_amount: u64,
+        debtors: vector<address>,
+        amounts: vector<u64>,
+        escrow_flags: vector<bool>,
+        clock: &Clock,
         ctx: &mut TxContext
     ) {
         let sender = tx_context::sender(ctx);
-        let len = vector::length(&participants);
-        let mut settled_mask = vector::empty<bool>();
+        let mut participants = vec_map::empty<address, ParticipantShare>();
+        let len = vector::length(&debtors);
         let mut i = 0;
+
         while (i < len) {
-            vector::push_back(&mut settled_mask, false);
+            let debtor = *vector::borrow(&debtors, i);
+            let amount_owed = *vector::borrow(&amounts, i);
+            let requires_escrow = *vector::borrow(&escrow_flags, i);
+
+            vec_map::insert(&mut participants, debtor, ParticipantShare {
+                debtor,
+                amount_owed,
+                requires_upfront_escrow: requires_escrow,
+                is_settled: false,
+                settled_at_ms: 0,
+            });
             i = i + 1;
         };
 
-        let proposal = SplitProposal<CoinType> {
+        let now = clock::timestamp_ms(clock);
+        let escrow = GroupSplitEscrow<T> {
             id: object::new(ctx),
-            initiator: sender,
-            description,
-            total_amount,
+            creator: sender,
+            title,
+            total_bill_amount,
+            escrowed_balance: balance::zero<T>(),
             participants,
-            shares,
-            settled_mask,
-            escrow: balance::zero<CoinType>(),
-            is_completed: false,
+            created_at_ms: now,
         };
 
-        transfer::share_object(proposal);
+        let split_id = object::id(&escrow);
+        event::emit(SplitCreatedEvent {
+            split_id,
+            creator: sender,
+            title,
+            total_amount: total_bill_amount,
+            created_at_ms: now,
+        });
+
+        transfer::share_object(escrow);
     }
 
-    /// Settle a participant's share in a bill split
-    public entry fun settle_share<CoinType>(
-        registry: &mut SolvencyRegistry,
-        proposal: &mut SplitProposal<CoinType>,
-        payment: Coin<CoinType>,
+    public entry fun settle_split_share<T>(
+        split: &mut GroupSplitEscrow<T>,
+        payment: Coin<T>,
+        clock: &Clock,
         ctx: &mut TxContext
     ) {
-        let sender = tx_context::sender(ctx);
-        let payment_val = coin::value(&payment);
+        let payer = tx_context::sender(ctx);
+        let share: &mut ParticipantShare = vec_map::get_mut(&mut split.participants, &payer);
+        assert!(!share.is_settled, EAlreadySettled);
+        assert!(coin::value(&payment) >= share.amount_owed, EInvalidSplitAmount);
 
-        let (found, index) = vector::index_of(&proposal.participants, &sender);
-        assert!(found, EParticipantNotFound);
+        let now = clock::timestamp_ms(clock);
+        share.is_settled = true;
+        share.settled_at_ms = now;
 
-        let required_share = *vector::borrow(&proposal.shares, index);
-        assert!(payment_val >= required_share, EInsufficientSplitAmount);
+        transfer::public_transfer(payment, split.creator);
 
-        let is_settled = vector::borrow_mut(&mut proposal.settled_mask, index);
-        assert!(!*is_settled, EAlreadySettled);
-        *is_settled = true;
-
-        balance::join(&mut proposal.escrow, coin::into_balance(payment));
-        registry.total_settlements_processed = registry.total_settlements_processed + 1;
+        event::emit(ShareSettledEvent {
+            split_id: object::id(split),
+            payer,
+            recipient: split.creator,
+            amount: share.amount_owed,
+            was_escrow_enforced: share.requires_upfront_escrow,
+            settled_at_ms: now,
+        });
     }
 
-    /// Deposit funds into an impulse cooldown vault
-    public entry fun create_cooldown_vault<CoinType>(
-        funds: Coin<CoinType>,
+    public entry fun lock_in_cooldown_vault<T>(
+        funds: Coin<T>,
         lock_duration_ms: u64,
-        reason: String,
+        trigger_memory_namespace: String,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
         let sender = tx_context::sender(ctx);
-        let current_time = clock::timestamp_ms(clock);
-        let unlock_timestamp_ms = current_time + lock_duration_ms;
+        let amount = coin::value(&funds);
+        let unlock_time_ms = clock::timestamp_ms(clock) + lock_duration_ms;
 
-        let vault = CooldownVault<CoinType> {
+        let vault = CooldownVault<T> {
             id: object::new(ctx),
             owner: sender,
             locked_balance: coin::into_balance(funds),
-            unlock_timestamp_ms,
-            created_timestamp_ms: current_time,
-            reason,
-            guardian_approvals: vector::empty<address>(),
+            unlock_time_ms,
+            trigger_memory_namespace,
         };
 
-        transfer::share_object(vault);
+        event::emit(CooldownLockedEvent {
+            vault_id: object::id(&vault),
+            owner: sender,
+            amount,
+            unlock_time_ms,
+            namespace: trigger_memory_namespace,
+        });
+
+        transfer::public_transfer(vault, sender);
     }
 
-    /// Withdraw funds from cooldown vault after unlock timestamp
-    public entry fun withdraw_cooldown_vault<CoinType>(
-        vault: &mut CooldownVault<CoinType>,
+    public entry fun unlock_cooldown_vault<T>(
+        vault: CooldownVault<T>,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        let sender = tx_context::sender(ctx);
-        assert!(vault.owner == sender, EUnauthorized);
-        let current_time = clock::timestamp_ms(clock);
-        assert!(current_time >= vault.unlock_timestamp_ms, EVaultStillLocked);
+        let CooldownVault { id, owner, locked_balance, unlock_time_ms, trigger_memory_namespace: _ } = vault;
+        assert!(tx_context::sender(ctx) == owner, ENotAuthorized);
+        assert!(clock::timestamp_ms(clock) >= unlock_time_ms, ECooldownStillActive);
 
-        let amount = balance::value(&vault.locked_balance);
-        let withdrawn_coin = coin::take(&mut vault.locked_balance, amount, ctx);
-        transfer::public_transfer(withdrawn_coin, sender);
+        object::delete(id);
+        let unlocked_coin = coin::from_balance(locked_balance, ctx);
+        transfer::public_transfer(unlocked_coin, owner);
     }
 }

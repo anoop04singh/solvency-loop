@@ -72,12 +72,12 @@ export function IdentityAndContactsPanel({ userProfile, contacts, onAddContact }
                 type="text"
                 readOnly
                 disabled
-                value={userProfile.owner}
+                value={userProfile.wallet}
                 className="w-full rounded-md bg-disabled-subtle px-lg py-sm text-xs font-mono text-disabled border border-secondary cursor-not-allowed"
               />
               <button
                 type="button"
-                onClick={() => handleCopy(userProfile.owner)}
+                onClick={() => handleCopy(userProfile.wallet)}
                 className="inline-flex items-center justify-center rounded-lg bg-primary p-sm text-secondary border border-primary shadow-xs hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-focus-ring shrink-0"
                 title="Copy Address"
               >
@@ -88,16 +88,16 @@ export function IdentityAndContactsPanel({ userProfile, contacts, onAddContact }
 
           <div className="pt-sm border-t border-secondary space-y-sm text-xs">
             <div className="flex justify-between items-center">
-              <span className="text-tertiary">Trust Rating</span>
-              <span className="font-semibold text-utility-success-700">{userProfile.trustScore} / 100</span>
+              <span className="text-tertiary">Safe Floor Reserve</span>
+              <span className="font-semibold text-utility-success-700">${userProfile.safeFloorUsdc.toFixed(2)} USDC</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-tertiary">Registered Epoch</span>
-              <span className="font-mono text-secondary">Epoch {userProfile.createdAtEpoch}</span>
+              <span className="text-tertiary">Mainnet Checkpoint</span>
+              <span className="font-mono text-secondary">#{userProfile.latestCheckpoint}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-tertiary">Total Volume Settled</span>
-              <span className="font-mono font-medium text-primary">${userProfile.totalSettledVolume.toFixed(2)} USDC</span>
+              <span className="text-tertiary">Live USDC Balance</span>
+              <span className="font-mono font-medium text-primary">${userProfile.usdcBalance.toFixed(2)} USDC</span>
             </div>
           </div>
         </div>

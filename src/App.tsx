@@ -22,16 +22,19 @@ export default function App() {
 
   // User on-chain profile state (Zero DB Rule)
   const [userProfile, setUserProfile] = useState<OnChainUserProfile>({
-    owner: '0x6a4f91e48f7d921b77c385ad3c41ef6a32bc31bc',
+    wallet: '0x6a4f91e48f7d921b77c385ad3c41ef6a32bc31bc',
     handle: 'solvency_lead.sui',
-    trustScore: 98,
+    memwalAccountId: '0x749a11223344556677889900aabbccddeeff0011',
+    safeFloorUsdc: 300.0,
     contacts: [
-      '0xa31e42b89f012c478a562ef09823abce8412ff31',
-      '0x8192fb283ac038b77a6411dd220c812bb319803a',
-      '0x55018a38c29191bb990234ac2b011928df77a110',
+      { walletAddress: '0xa31e42b89f012c478a562ef09823abce8412ff31', handle: 'alex.sui' },
+      { walletAddress: '0x8192fb283ac038b77a6411dd220c812bb319803a', handle: 'priya.sui' },
+      { walletAddress: '0x55018a38c29191bb990234ac2b011928df77a110', handle: 'sam.sui' },
     ],
-    createdAtEpoch: 512,
-    totalSettledVolume: 1845.5,
+    usdcBalance: 1250.0,
+    suiBalance: 18.42,
+    latestCheckpoint: '48291042',
+    isRegisteredOnChain: true,
   })
 
   // Real secondary Sui mainnet contacts for multi-user demo
@@ -69,8 +72,8 @@ export default function App() {
   const [lastRpcPayload, setLastRpcPayload] = useState<unknown>(null)
 
   useEffect(() => {
-    fetchWalrusMemories(userProfile.owner).then(setMemories)
-  }, [userProfile.owner])
+    fetchWalrusMemories(userProfile.wallet).then(setMemories)
+  }, [userProfile.wallet])
 
   const handleAddContact = (address: string, name: string) => {
     const newEntry = {
@@ -82,14 +85,13 @@ export default function App() {
     }
     setContacts((prev) => [...prev, newEntry])
     storeWalrusMemory(
-      userProfile.owner,
+      userProfile.wallet,
       'behavioral_note',
       `Appended peer ${name} (${address}) to Sui dynamic field graph.`
     )
   }
 
   const handleProposeSplit = (description: string, totalAmount: number, participants: string[], shares: number[]) => {
-    // Distribute obligations
     const sharePerPerson = totalAmount / (participants.length + 1)
     setContacts((prev) =>
       prev.map((c) => {
@@ -103,10 +105,10 @@ export default function App() {
       })
     )
     storeWalrusMemory(
-      userProfile.owner,
+      userProfile.wallet,
       'split_proposal',
       `Initiated Circle USDC split proposal "${description}" for $${totalAmount} across ${participants.length} peers.`
-    ).then(() => fetchWalrusMemories(userProfile.owner).then(setMemories))
+    ).then(() => fetchWalrusMemories(userProfile.wallet).then(setMemories))
   }
 
   const handleSettle = (address: string, amount: number) => {
@@ -122,28 +124,28 @@ export default function App() {
       })
     )
     storeWalrusMemory(
-      userProfile.owner,
+      userProfile.wallet,
       'debt_settlement',
       `Executed on-chain atomic settlement of $${amount} Circle USDC with ${address}.`
-    ).then(() => fetchWalrusMemories(userProfile.owner).then(setMemories))
+    ).then(() => fetchWalrusMemories(userProfile.wallet).then(setMemories))
   }
 
   const handleVaultDeposit = (amount: number, reason: string) => {
     setLockedBalance((prev) => prev + amount)
     storeWalrusMemory(
-      userProfile.owner,
+      userProfile.wallet,
       'cooldown_deposit',
       `Deposited $${amount} USDC into Cooldown Vault. Reason: ${reason}`
-    ).then(() => fetchWalrusMemories(userProfile.owner).then(setMemories))
+    ).then(() => fetchWalrusMemories(userProfile.wallet).then(setMemories))
   }
 
   const handleVaultWithdraw = () => {
     setLockedBalance(0)
     storeWalrusMemory(
-      userProfile.owner,
+      userProfile.wallet,
       'behavioral_note',
       `Withdrew unlocked reserve from Cooldown Vault after epoch progression.`
-    ).then(() => fetchWalrusMemories(userProfile.owner).then(setMemories))
+    ).then(() => fetchWalrusMemories(userProfile.wallet).then(setMemories))
   }
 
   const handleRefreshRpc = async () => {
@@ -153,10 +155,10 @@ export default function App() {
         jsonrpc: '2.0',
         id: Date.now(),
         method: 'suix_getAllBalances',
-        params: [userProfile.owner],
+        params: [userProfile.wallet],
       }
       setLastRpcPayload(payload)
-      await executeTatumSuiRpc('suix_getAllBalances', [userProfile.owner])
+      await executeTatumSuiRpc('suix_getAllBalances', [userProfile.wallet])
     } catch {
       // Gateway handled
     } finally {

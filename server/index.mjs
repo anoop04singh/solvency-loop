@@ -32,6 +32,10 @@ app.use(express.json())
 app.use(credentialGuard)
 
 app.use('/api/tatum', tatumRoutes)
+app.use('/api/tatum-rpc', (req, res, next) => {
+  req.url = '/sui-rpc'
+  tatumRoutes(req, res, next)
+})
 app.use('/api/memory', memoryRoutes)
 
 const server = createHttpServer(app)
