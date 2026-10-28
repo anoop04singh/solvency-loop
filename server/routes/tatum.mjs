@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { tatumApiBase } from '../tatum-client.mjs'
+import { tatumRpc, tatumApiBase } from '../tatum-client.mjs'
 
 const router = Router()
 
@@ -7,7 +7,6 @@ const router = Router()
 router.get('/status', async (_req, res) => {
   if (!process.env.TATUM_API_KEY) return res.json({ status: 'no-api-key' })
   try {
-    // Any HTTP response proves the request left the pod; the status code doesn't matter.
     await fetch(tatumApiBase(), { signal: AbortSignal.timeout(8000) })
     res.json({ status: 'connected' })
   } catch (error) {
@@ -15,17 +14,22 @@ router.get('/status', async (_req, res) => {
   }
 })
 
-// Add Tatum routes here. tatumFetch for the REST / Data API, tatumRpc for a chain's
-// JSON-RPC gateway; both add the x-api-key header and pick the right host. Never
-// write api.tatum.io or api.tatum.dev into a route. No @tatumio/tatum SDK.
-//
-// Both throw MissingApiKeyError when the workspace has no key — surface it, don't retry.
-//
-//   import { tatumFetch, tatumRpc, MissingApiKeyError } from '../tatum-client.mjs'
-//
-//   const r = await tatumFetch('/v3/tatum/rate/BTC?basePair=USD')
-//   const rpc = await tatumRpc('ethereum', {
-//     jsonrpc: '2.0', method: 'eth_blockNumber', params: [], id: 1,
-//   })
+// Proxy for Sui Mainnet JSON-RPC requests through Tatum Gateway
+router.post('/sui-rpc', async (req, res) => {
+  try {
+    const payload = req.body
+    const response = await tatumRpc('sui', payload, 'mainnet')
+    const data = await response.json()
+    res.status(response.status).json(data)
+  } catch (error) {
+    console.error('Tatum Sui RPC gateway error:', error)
+    res.status(500).json({
+      error: {
+        code: -32603,
+        message: error.message || 'Internal Tatum Sui RPC error',
+      },
+    })
+  }
+})
 
 export default router
