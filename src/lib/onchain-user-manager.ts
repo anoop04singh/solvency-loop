@@ -1,6 +1,6 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { tatumSuiClient } from './tatum-rpc-client';
-import { contractConfig, publicConfig, requireAddress, SUI_MAINNET_USDC_TYPE } from './config';
+import { contractConfig, requireAddress, SUI_MAINNET_USDC_TYPE } from './config';
 import { positiveUsdc, usdcToUnits, unitsToUsdc } from './money';
 
 export interface OnChainContact { walletAddress: string; handle: string; }
@@ -39,7 +39,7 @@ export async function fetchFullUserStateViaTatum(walletAddress: string): Promise
   if (obj.error && obj.error.code !== 'dynamicFieldNotFound') throw new Error('Profile read failed: ' + obj.error.code);
   const base = { wallet, usdcBalance: unitsToUsdc(balances.find(b => b.coinType === SUI_MAINNET_USDC_TYPE)?.totalBalance || '0'),
     suiBalance: Number(balances.find(b => b.coinType.endsWith('::sui::SUI'))?.totalBalance || '0') / 1e9, latestCheckpoint: checkpoint };
-  if (!obj.data) return { ...base, handle: '', memwalAccountId: publicConfig().memwalAccountId, safeFloorUsdc: 300, contacts: [], isRegisteredOnChain: false };
+  if (!obj.data) return { ...base, handle: '', memwalAccountId: '', safeFloorUsdc: 300, contacts: [], isRegisteredOnChain: false };
   if (obj.data.content?.dataType !== 'moveObject') throw new Error('Profile is not a Move object.');
   const p = record(record(obj.data.content.fields).value);
   return { ...base, handle: String(p.handle), memwalAccountId: String(p.memwal_account_id), safeFloorUsdc: amount(p.safe_floor_usdc),

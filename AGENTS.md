@@ -10,6 +10,7 @@ The application was migrated from an AI Builder Vite/Express export to the Next.
 - Only real user-provided canonical Mainnet wallets and native Circle USDC. Test fixtures belong only in tests; no mock fallback data in runtime code.
 - Use bigint micro-USDC arithmetic. The Move contract is the authority for payment, escrow, authorization, reserve, and cooldown invariants.
 - Memory requests require a wallet personal-message signature over the action/payload, timestamp, nonce, and origin. Do not remove authentication or silently convert relayer failures into empty successful data.
+- Each user owns their MemWal account. Discover it from the configured AccountRegistry, verify owner/type/active delegate on every memory request, and use the account linked in that wallet's on-chain profile. Never restore a global account fallback or write into another user's account from a caller's signature. Protocol package/registry IDs and the app's server delegate remain shared.
 - Check `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, and both Move commands when their corresponding code changes. Stop dev before production builds; do not run both against the same .next directory.
 - Framework/CLI baseline: official Sui 1.72.2. Commit `Move.lock`; review framework/toolchain changes together.
 - No deployment, signing, or live financial transaction is implied by a request to build/test. The user requested deployment instructions and will configure credentials later.

@@ -10,7 +10,14 @@ export function requireAddress(value: unknown, label = 'Sui address'): string {
   return value.toLowerCase();
 }
 export function publicConfig() {
-  return { packageId: process.env.NEXT_PUBLIC_SOLVENCY_PACKAGE_ID || '', registryId: process.env.NEXT_PUBLIC_SOLVENCY_REGISTRY_ID || '', memwalAccountId: process.env.NEXT_PUBLIC_MEMWAL_ACCOUNT_ID || '' };
+  return { packageId: process.env.NEXT_PUBLIC_SOLVENCY_PACKAGE_ID || '', registryId: process.env.NEXT_PUBLIC_SOLVENCY_REGISTRY_ID || '',
+    memwalPackageId: process.env.NEXT_PUBLIC_MEMWAL_PACKAGE_ID || '', memwalRegistryId: process.env.NEXT_PUBLIC_MEMWAL_REGISTRY_ID || '',
+    memwalDelegatePublicKey: process.env.NEXT_PUBLIC_MEMWAL_AGENT_ID || '' };
+}
+export function memwalConfig() {
+  const c = publicConfig();
+  return { packageId: requireAddress(c.memwalPackageId, 'MemWal package ID'), registryId: requireAddress(c.memwalRegistryId, 'MemWal registry ID'),
+    delegatePublicKey: requireAddress(c.memwalDelegatePublicKey, 'MemWal delegate public key') };
 }
 export function contractConfig() {
   const c = publicConfig();

@@ -1,6 +1,6 @@
 # SolvencyLoop
 
-A Next.js 15 App Router application for Sui Mainnet profiles, contact graphs, Circle USDC bill splits, upfront escrow, 24-hour cooldown vaults, and wallet-scoped Walrus memory. There is no application database or local user-state store.
+A Next.js 15 App Router application for Sui Mainnet profiles, contact graphs, Circle USDC bill splits, upfront escrow, 24-hour cooldown vaults, and user-owned MemWal accounts with wallet-scoped Walrus memory. There is no application database or local user-state store.
 
 **Current state:** the application runs locally and has automated application/contract tests. Credentials are deliberately blank and the contract has not been deployed. Live Mainnet readiness is a separate check after you complete the steps below.
 
@@ -79,15 +79,14 @@ These commands are for you to execute. Publishing spends SUI gas. No deployment 
 
 ## Configure Walrus memory and wallets
 
-Use an existing **Mainnet MemWal account** and an authorized Ed25519 delegate, or provision them using the [official MemWal account documentation](https://github.com/MystenLabs/MemWal). Use the correct deployed MemWal package/registry IDs for that Mainnet relayer; they are different from the SolvencyLoop package/registry.
+Configure the deployed **Mainnet MemWal protocol package/registry** and an app server Ed25519 delegate using the [official MemWal account documentation](https://docs.wal.app/walrus-memory/contract/delegate-key-management). These package/registry IDs are shared protocol infrastructure, different from SolvencyLoop's package/registry. Every connected wallet discovers its own account through the MemWal registry's owner-to-account table; account IDs are stored in each user's SolvencyLoop profile on Sui, never in a global environment setting.
 
 Fill these values in `.env.local`:
 
 ```dotenv
 NEXT_PUBLIC_SOLVENCY_PACKAGE_ID=0x...64hex
 NEXT_PUBLIC_SOLVENCY_REGISTRY_ID=0x...64hex
-MEMWAL_DELEGATE_PRIVATE_KEY=your_authorized_delegate_key
-NEXT_PUBLIC_MEMWAL_ACCOUNT_ID=0x...64hex
+MEMWAL_DELEGATE_PRIVATE_KEY=your_app_server_delegate_key
 NEXT_PUBLIC_MEMWAL_AGENT_ID=0x...delegate_public_key_hex
 NEXT_PUBLIC_MEMWAL_PACKAGE_ID=0x...64hex
 NEXT_PUBLIC_MEMWAL_REGISTRY_ID=0x...64hex
@@ -98,7 +97,17 @@ NEXT_PUBLIC_SAM_SUI_WALLET=0x...real_wallet
 VERIFY_WALLET_ADDRESS=0x...your_connected_wallet
 ```
 
-The placeholders above are explanatory, not valid values. Wallet/object IDs must be nonzero canonical Sui addresses: `0x` followed by 64 hex digits. `MEMWAL_AGENT_ID` is the delegate's raw 32-byte public key with a `0x` prefix, not its derived Sui wallet address. The readiness script checks that it matches the private delegate key.
+The placeholders above are explanatory, not valid values. Wallet/object IDs must be nonzero canonical Sui addresses: `0x` followed by 64 hex digits. `NEXT_PUBLIC_MEMWAL_AGENT_ID` is the app delegate's raw 32-byte public key with a `0x` prefix, not its derived Sui wallet address. The setup API and readiness script check that it matches the private delegate key. Generate a separate app delegate using the official `generateDelegateKey()` helper; keep its private key only in server secrets. Users authorize that public key themselves through their wallets. It is never a user's owner-wallet private key.
+
+To generate the app delegate once, run this locally and copy the two resulting lines into the ignored `.env.local` (or your host's secret settings). No chain transaction is submitted by this command:
+
+```powershell
+node --input-type=module -e "import { generateDelegateKey } from '@mysten-incubation/memwal/account'; const k = await generateDelegateKey(); console.log('MEMWAL_DELEGATE_PRIVATE_KEY=' + k.privateKey); console.log('NEXT_PUBLIC_MEMWAL_AGENT_ID=0x' + Buffer.from(k.publicKey).toString('hex'));"
+```
+
+Keep this delegate stable across restarts. Rotating it later requires each user to approve the new public key and revoke the old one in their MemWal account.
+
+Remove the obsolete `NEXT_PUBLIC_MEMWAL_ACCOUNT_ID` from existing environment files. It is no longer read. No per-user credentials or account IDs need to be added to `.env.local`. The same backend delegate can be approved by multiple account owners, but the backend still has account-wide access while approved. User-owned accounts provide ownership and revocation control; they do not make the backend unable to read authorized memories. Namespaces organize data inside an account and are not separate access boundaries. See [MemWal ownership and permissions](https://docs.wal.app/walrus-memory/contract/ownership-and-permissions).
 
 Friend wallets can instead be entered in the UI and saved on chain. They must be distinct from each other and the creator. Mainnet USDC is fixed to:
 
@@ -112,14 +121,16 @@ Both MemWal factories inject the Tatum client. Pinned MemWal 0.1.11 does not nat
 
 ## Use and verify the complete flow
 
-1. Restart `npm run dev`, connect your Mainnet wallet, enter your handle, liquidity floor, and the three real friend wallets, then save the profile/contacts. Approve and wait for the Sui transaction.
-2. Optionally store the twelve **demo preferences** on Walrus. They are explicitly labelled examples, not fabricated past spending. The app waits for all twelve actual blob commits. Recall your memories with a personal-message signature before applying their rules.
-3. Create a bill. Food and eligible drinks are allocated in exact micro-USDC, including the creator's share. Alex's demo rule excludes alcohol; Sam's demo rule requires upfront funding only when his share is **strictly above 40 USDC**. Confirmed settlement timing can also generate an upfront rule when the observed average lag exceeds seven days.
-4. A split without upfront shares starts active. A split with upfront shares remains pending: switch to each flagged debtor's wallet and fund its exact share; switch back to the creator to activate. Only then are escrow funds released to the creator and standard settlement enabled.
-5. A creator can cancel a pending split. Funded participants can refund after cancellation, or independently after the 24-hour funding deadline. Cancelled/expired splits cannot activate. Settlements reject underpayment, overpayment, and duplicate payment.
-6. After a successful settlement/activation, the app verifies package-emitted on-chain events before storing actual timing observations in the payer and recipient namespaces. A memory failure does not reclassify a confirmed payment as failed: use the memory-only retry button instead of paying twice.
-7. A registered wallet can lock USDC for exactly 24 hours. The builder selects sufficient real USDC coins across pages. The contract consumes and transfers a reserve coin back to the owner, enforcing the registered floor on chain. The owner can unlock only after maturity. The vault cannot be transferred to another wallet.
-8. Record a reflection, analyze notes into facts, recall memories, or restore a namespace's index. These operations require short-lived signatures over the exact action/payload and web origin. Restore reports partial recovery or permanent errors honestly.
+1. Restart `npm run dev` and connect your Mainnet wallet. The app reads the MemWal registry through Tatum and reuses any existing account. If none exists, choose **Create my memory account** and approve the transaction. Each wallet can create one account per protocol registry. Lookup failures block creation instead of being treated as missing accounts. Account creation and delegate changes spend SUI gas.
+2. Review the access explanation and choose **Authorize app memory access**. This owner-approved transaction registers the app's public delegate key on your account. It permits account-wide reads/writes, including memories created by other apps. Enter your handle, liquidity floor, and three real friend wallets, then save the profile/contacts to link your account on Sui. Already registered profiles can be saved again to replace an old shared-account reference with the discovered user-owned account. Existing shared-account memories are not automatically copied or deleted.
+3. Optionally store the twelve **demo preferences** on Walrus. They are explicitly labelled examples, not fabricated past spending. The app waits for all twelve actual blob commits. Recall your memories with a personal-message signature before applying their rules.
+4. Create a bill. Food and eligible drinks are allocated in exact micro-USDC, including the creator's share. Alex's demo rule excludes alcohol; Sam's demo rule requires upfront funding only when his share is **strictly above 40 USDC**. Confirmed settlement timing can also generate an upfront rule when the observed average lag exceeds seven days.
+5. A split without upfront shares starts active. A split with upfront shares remains pending: switch to each flagged debtor's wallet and fund its exact share; switch back to the creator to activate. Only then are escrow funds released to the creator and standard settlement enabled.
+6. A creator can cancel a pending split. Funded participants can refund after cancellation, or independently after the 24-hour funding deadline. Cancelled/expired splits cannot activate. Settlements reject underpayment, overpayment, and duplicate payment.
+7. After a successful settlement/activation, the app verifies package-emitted on-chain events and writes timing observations only to the signing wallet's account. Recipients choose **Import my confirmed settlements** to learn from their own history. Each signed request scans five settlement events and returns a cursor for the next page; continue until complete. Cursor progress is held only in the current browser page. Import verifies successful transactions, event identities, wallet participation and exact split types; stable event identifiers prevent duplicate observations on retries. A memory failure does not reclassify a confirmed payment as failed: use the memory-only retry button instead of paying twice. A payer without memory onboarding can still pay and import the observation after completing setup.
+8. A registered wallet can lock USDC for exactly 24 hours. The builder selects sufficient real USDC coins across pages. The contract consumes and transfers a reserve coin back to the owner, enforcing the registered floor on chain. The owner can unlock only after maturity. The vault cannot be transferred to another wallet.
+9. Record a reflection, analyze notes into facts, recall memories, or restore a namespace's index. These operations require short-lived signatures over the exact action/payload and web origin. Before creating any SDK client, the server verifies the signing wallet's live registry mapping, account type, owner, active state, delegate grant and profile link. It ignores caller-supplied account IDs. Restore reports partial recovery or permanent errors honestly.
+10. Choose **Revoke app memory access** to remove the delegate through your wallet. The app checks the live grant on future requests and clears recalled data when revocation is confirmed or detected. Forward revocation does not retract older keys or plaintext already obtained by a delegate; protecting historical ciphertext requires re-encryption. Frozen/quarantined accounts must be managed in MemWal before memory can resume. Financial actions remain available independently of the memory delegate.
 
 Run the read-only readiness check once the profile exists and at least ten unique memories are recallable:
 
@@ -127,7 +138,7 @@ Run the read-only readiness check once the profile exists and at least ten uniqu
 npm.cmd run verify:mainnet
 ```
 
-It fails unless it verifies authenticated Mainnet chain/checkpoint access, the shared registry's exact type, required published functions, Circle USDC metadata, delegate identity, matching relayer Mainnet configuration, relayer health, and at least ten distinct readable Walrus blobs across the verification wallet's three namespaces. It does not seed data or submit a transaction.
+It discovers `VERIFY_WALLET_ADDRESS`'s account from the registry and checks its owner, active delegate grant and matching profile. It also requires authenticated Mainnet chain/checkpoint access, the shared registry's exact type, required published functions, Circle USDC metadata, delegate identity, matching relayer Mainnet configuration, relayer health, and at least ten distinct readable Walrus blobs across that user's three namespaces. It does not seed data or submit a transaction. No SolvencyLoop Move schema change is needed for user-owned memory: the existing per-profile `memwal_account_id` stores the link, while MemWal's contract enforces account/delegate ownership.
 
 ## Validation and production
 
