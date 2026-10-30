@@ -4,9 +4,33 @@ A Next.js 15 App Router application for Sui Mainnet profiles, contact graphs, Ci
 
 **Current state:** the application runs locally and has automated application/contract tests. Credentials are deliberately blank and the contract has not been deployed. Live Mainnet readiness is a separate check after you complete the steps below.
 
+**Access policy:** a wallet-owned MemWal account is mandatory. Users create or reuse that account, authorize the app delegate, then register their profile before the financial dashboard opens. The contract accepts an actual MemWalAccount object and checks its owner and profile link for financial actions. Payments and vaults use only native Circle USDC on Sui Mainnet. SUI is needed for network gas. There is no guest payment, off-chain settlement, card/fiat payment, alternative token, or MemWal-free payment path. Existing-fund recovery still requires the user's genuine linked MemWal account, but works after memory revocation/freezing to avoid trapping funds.
+
+## Object factory structure
+
+One published Move package creates independent objects using shared application code. Users do not deploy individual packages.
+
+| Object | Ownership and purpose |
+| --- | --- |
+| `SolvencyRegistry` | Shared directory of wallet address → profile object ID, plus registered-user count. Only first registration writes it. |
+| `UserProfile` | One non-transferable, wallet-owned object containing the handle, MemWal account link, liquidity floor, contacts and registration timestamp. |
+| `MemWalAccount` | The user's existing account in the separate MemWal protocol. Ownership and the registered profile link are checked for every financial action. |
+| `GroupSplitEscrow<USDC>` | Independent shared object per bill, so its participants can fund and settle it. |
+| `CooldownVault<USDC>` | Independent owner-held object per deposit, with an enforced 24-hour unlock time. |
+
+`register_user` is the profile factory: it verifies the genuine active MemWal account, rejects duplicate registration, creates the profile with optional initial contacts, records its ID in the directory and transfers it to the caller atomically. `update_profile`, contact edits and every financial function receive that owned profile directly; the global registry is not a transaction input for those operations. The profile has only the `key` ability, no public transfer function and an immutable wallet field. Only the factory can construct a profile.
+
+The browser and memory API discover the ID through the directory, then verify the profile's exact type, address ownership, UID and recorded wallet. Lookup errors and legacy nested-profile entries block actions; only an explicit missing directory entry enables registration. Profile IDs are discovered per user and need no additional environment variables. On-chain profiles, contacts and financial records remain public.
+
+This removes shared-registry writes from profile/contact edits. Registration still shares a directory write, and participants updating the same bill still share that bill's object. MemWal and bill transactions still involve shared objects; this is not a promise of consensus-free payments or measured gas savings.
+
+This layout is intended for the application's first deployment. Publish the current package using the steps below and configure its package/registry IDs together. An older package containing nested profiles is not compatible with these builders; upgrading an already deployed older layout would require a separate migration plan.
+
 ## Local setup
 
 Requirements: Node.js 22+, npm, and **Sui CLI 1.72.2** for the pinned framework/toolchain. The Move manifest pins the official `mainnet-v1.72.2` source commit and `Move.lock` is checked in. Review both together when upgrading the CLI/framework.
+
+The Move package also depends on the existing Mainnet MemWal contract. Its official production source is pinned in `move/vendor/memwal` with its license and provenance. Only test-only fixtures are added; this protocol package is not republished with SolvencyLoop. The root manifest uses the current package format with explicit pinned `std`/`sui` dependencies. The vendor's `Published.toml` supplies the existing Mainnet address; legacy `[addresses]` tables are intentionally absent. [CONTRACT_VERIFICATION.md](./CONTRACT_VERIFICATION.md) records the contract/application checks and their limits.
 
 From this folder in PowerShell:
 
@@ -26,48 +50,51 @@ The lockfile also applies compatible security overrides for PostCSS, nanoid, and
 
 These commands are for you to execute. Publishing spends SUI gas. No deployment or signed transaction has been performed by the coding agent.
 
-1. Configure a **Mainnet** Tatum API key in the ignored `.env.local` file:
+1. Open PowerShell in the project and confirm your installed Sui CLI matches the pinned **1.72.2** baseline:
 
-   ```dotenv
-   TATUM_API_KEY=your_mainnet_tatum_key
+   ```powershell
+   Set-Location "C:\Users\singa\OneDrive\Documents\ChatGPT\solvency-loop"
+   sui --version
    ```
 
-2. Run the checks before publishing:
+   Deployment uses the Sui CLI directly against Sui's [official Mainnet endpoint](https://docs.sui.io/develop/sui-architecture/networks). No Tatum bridge or Tatum API key is required for these CLI steps. The application's own RPC transport still requires its Tatum key later.
+
+2. Run the checks before publishing. Stop any Next.js development server before `npm.cmd run check`, because it includes a production build:
 
    ```powershell
    npm.cmd run check
    npm.cmd run move:build
    npm.cmd run move:test
+   npm.cmd run move:verify-bundle
    ```
 
-3. In a second terminal, start the loopback-only Tatum bridge and leave it running:
+3. Configure a direct Mainnet CLI environment. Run `new-env` only once; if the alias already exists, confirm its URL with `sui client envs` and reuse it:
 
    ```powershell
-   npm.cmd run rpc:bridge
+   sui client envs
+   sui client new-env --alias solvency-direct-mainnet --rpc https://fullnode.mainnet.sui.io:443
+   sui client switch --env solvency-direct-mainnet
    ```
 
-   The bridge listens on `127.0.0.1:3987` and sends every upstream request to `https://sui-mainnet.gateway.tatum.io` with the server-side `x-api-key` header. It is needed because this Sui CLI does not expose a custom-header option. Do not put your API key in an RPC URL or switch to a public fullnode.
-
-4. In your main terminal, select the bridge-backed environment. Create this alias only once:
+4. Check the network, wallet and available SUI gas:
 
    ```powershell
-   sui client new-env --alias solvency-tatum-mainnet --rpc http://127.0.0.1:3987
-   sui client switch --env solvency-tatum-mainnet
    sui client chain-identifier
    sui client active-address
    sui client gas
    ```
 
-   Confirm the chain identifier is **`35834a8a`**, the Mainnet wallet is yours, and it has SUI for gas. If no wallet is configured, set up/import it yourself using the Sui CLI or your wallet; never place a wallet private key in a public environment variable or this repository.
+   Confirm the chain identifier is **`35834a8a`**, the Mainnet wallet is yours, and it has SUI for gas. Use `sui client addresses` to list configured wallets and `sui client switch --address YOUR_DEPLOYER_ADDRESS` if you need to select another one. If no wallet is configured, set up/import it yourself using the Sui CLI or your wallet; never place a wallet private key in a public environment variable or this repository. This package links to existing Mainnet MemWal objects and must be published to Mainnet with these dependency bindings.
 
-5. Simulate publication, inspect the result, then publish:
+5. Verify the dependency source with the direct Mainnet CLI, then simulate publication. Run these commands individually, and only continue to the publish command after verification and the dry run succeed:
 
    ```powershell
-   sui client publish .\move\solvency_loop --build-env mainnet --dry-run --json
-   sui client publish .\move\solvency_loop --build-env mainnet --json
+   sui client verify-source .\move\solvency_loop --build-env mainnet --verify-deps --skip-source
+   sui client publish .\move\solvency_loop --build-env mainnet --verify-deps --dry-run --json
+   sui client publish .\move\solvency_loop --build-env mainnet --verify-deps --json
    ```
 
-   The CLI estimates gas when no explicit budget is supplied. Keep dependency verification enabled. The module's `init` function automatically creates and shares one `SolvencyRegistry` during publication.
+   The first command verifies on-chain dependencies while skipping the unpublished root package. The CLI estimates gas when no explicit budget is supplied. Keep dependency verification enabled; if a source/dependency mismatch is reported, stop and review the pinned dependency instead of skipping verification. Do not use `--with-unpublished-dependencies`: MemWal is already deployed. The module's `init` function automatically creates and shares one `SolvencyRegistry` during publication. The coding agent has checked the installed CLI's flags but has not executed these Mainnet verification/publication commands or signed a transaction.
 
 6. Copy the IDs from the successful publication's `objectChanges`:
 
@@ -75,7 +102,7 @@ These commands are for you to execute. Publishing spends SUI gas. No deployment 
    - The created shared object with `objectType: "<packageId>::core::SolvencyRegistry"` contains `objectId` → `NEXT_PUBLIC_SOLVENCY_REGISTRY_ID`.
    - Keep the resulting UpgradeCap under your control.
 
-   Add the two IDs to `.env.local`. You may stop the bridge with Ctrl+C after CLI work finishes. The web app routes directly through its own authenticated Tatum transport/proxy.
+   Add the two IDs to `.env.local`. The CLI also writes publication metadata to `Published.toml`; retain it with the lockfile. After publication, verify the root package with `sui client verify-source .\move\solvency_loop --build-env mainnet --verify-deps`. Complete the app's Tatum/MemWal environment configuration below and restart it. The web app continues to route through its own authenticated Tatum transport/proxy, independently of your CLI environment. The unused `rpc:bridge` helper is optional legacy tooling and is not part of this deployment procedure.
 
 ## Configure Walrus memory and wallets
 
@@ -88,8 +115,8 @@ NEXT_PUBLIC_SOLVENCY_PACKAGE_ID=0x...64hex
 NEXT_PUBLIC_SOLVENCY_REGISTRY_ID=0x...64hex
 MEMWAL_DELEGATE_PRIVATE_KEY=your_app_server_delegate_key
 NEXT_PUBLIC_MEMWAL_AGENT_ID=0x...delegate_public_key_hex
-NEXT_PUBLIC_MEMWAL_PACKAGE_ID=0x...64hex
-NEXT_PUBLIC_MEMWAL_REGISTRY_ID=0x...64hex
+NEXT_PUBLIC_MEMWAL_PACKAGE_ID=0xe7c16fbea0560e7057e2bf7422feaa4fb313749fc69c9e9092fac7a33b81d7f5
+NEXT_PUBLIC_MEMWAL_REGISTRY_ID=0x8bf82c9e09e36b8d1c38298f68b7cb68e7b8762887e7592add9986d5e9cf199f
 MEMWAL_SERVER_URL=https://relayer.memory.walrus.xyz
 NEXT_PUBLIC_ALEX_SUI_WALLET=0x...real_wallet
 NEXT_PUBLIC_PRIYA_SUI_WALLET=0x...real_wallet
@@ -97,7 +124,31 @@ NEXT_PUBLIC_SAM_SUI_WALLET=0x...real_wallet
 VERIFY_WALLET_ADDRESS=0x...your_connected_wallet
 ```
 
-The placeholders above are explanatory, not valid values. Wallet/object IDs must be nonzero canonical Sui addresses: `0x` followed by 64 hex digits. `NEXT_PUBLIC_MEMWAL_AGENT_ID` is the app delegate's raw 32-byte public key with a `0x` prefix, not its derived Sui wallet address. The setup API and readiness script check that it matches the private delegate key. Generate a separate app delegate using the official `generateDelegateKey()` helper; keep its private key only in server secrets. Users authorize that public key themselves through their wallets. It is never a user's owner-wallet private key.
+The MemWal package/registry IDs above were read from the [public Mainnet relayer configuration](https://relayer.memory.walrus.xyz/config) on 2026-10-30 and match the [official app configuration](https://github.com/MystenLabs/walrus-memory/blob/bbf6b2268f1985bbafbb9f2aab16436fc30da7da/apps/app/.env.example). They are real protocol IDs. Other `0x...` values remain explanatory placeholders: replace them with your deployment output or real wallet addresses. Wallet/object IDs must be nonzero canonical Sui addresses: `0x` followed by 64 hex digits. `NEXT_PUBLIC_MEMWAL_AGENT_ID` is the app delegate's raw 32-byte public key with a `0x` prefix, not its derived Sui wallet address. The setup API and readiness script check that it matches the private delegate key. Generate a separate app delegate using the official `generateDelegateKey()` helper; keep its private key only in server secrets. Users authorize that public key themselves through their wallets. It is never a user's owner-wallet private key.
+
+Before deployment you can confirm the public protocol IDs without credentials:
+
+```powershell
+Invoke-RestMethod https://relayer.memory.walrus.xyz/config | Select-Object network, packageId, registryId
+```
+
+Use only the protocol IDs from that response. All application/CLI Sui traffic stays on Tatum; do not copy its alternative RPC URLs into the application. If the protocol package changes, review the vendored contract, Mainnet dependency binding, SDK compatibility and environment together before deployment.
+
+Environment checklist:
+
+| Variable | What you supply | When |
+| --- | --- | --- |
+| `TATUM_API_KEY` | Your Tatum key enabled for the Sui Mainnet gateway | Before CLI verification/deployment |
+| `MEMWAL_DELEGATE_PRIVATE_KEY` | App delegate private key generated below | Before starting the app |
+| `NEXT_PUBLIC_MEMWAL_AGENT_ID` | Matching raw public key generated below | Before starting the app |
+| `NEXT_PUBLIC_MEMWAL_PACKAGE_ID`, `NEXT_PUBLIC_MEMWAL_REGISTRY_ID` | Verified public protocol IDs shown above | Before starting the app |
+| `NEXT_PUBLIC_SOLVENCY_PACKAGE_ID`, `NEXT_PUBLIC_SOLVENCY_REGISTRY_ID` | Values from your successful publish transaction | After deployment |
+| `APP_ORIGIN` | Leave blank locally; set the public HTTPS origin on a host | For hosted deployment |
+| `NEXT_PUBLIC_ALEX_SUI_WALLET`, `NEXT_PUBLIC_PRIYA_SUI_WALLET`, `NEXT_PUBLIC_SAM_SUI_WALLET` | Optional real contact defaults; blank is allowed | Optional; users can enter contacts in the UI |
+| `VERIFY_WALLET_ADDRESS` | An onboarded wallet with at least ten readable memories | Before `verify:mainnet` only |
+| `OPENAI_API_KEY` | Not needed for the default relayer flow; server-only manual mode credential | Optional |
+
+No user wallet private key, personal MemWal account ID, database URL, or payment-provider key belongs in this setup. The RPC URL is fixed in code; the old `NEXT_PUBLIC_TATUM_SUI_RPC` setting is ignored.
 
 To generate the app delegate once, run this locally and copy the two resulting lines into the ignored `.env.local` (or your host's secret settings). No chain transaction is submitted by this command:
 
@@ -122,15 +173,15 @@ Both MemWal factories inject the Tatum client. Pinned MemWal 0.1.11 does not nat
 ## Use and verify the complete flow
 
 1. Restart `npm run dev` and connect your Mainnet wallet. The app reads the MemWal registry through Tatum and reuses any existing account. If none exists, choose **Create my memory account** and approve the transaction. Each wallet can create one account per protocol registry. Lookup failures block creation instead of being treated as missing accounts. Account creation and delegate changes spend SUI gas.
-2. Review the access explanation and choose **Authorize app memory access**. This owner-approved transaction registers the app's public delegate key on your account. It permits account-wide reads/writes, including memories created by other apps. Enter your handle, liquidity floor, and three real friend wallets, then save the profile/contacts to link your account on Sui. Already registered profiles can be saved again to replace an old shared-account reference with the discovered user-owned account. Existing shared-account memories are not automatically copied or deleted.
+2. Review the access explanation and choose **Authorize app memory access**. This owner-approved transaction registers the app's public delegate key on your account. It permits account-wide reads/writes, including memories created by other apps. Enter your handle and liquidity floor, then save the profile to link your account on Sui. First registration creates your owned profile and optional contacts in one transaction; subsequent saves update that same profile without writing the global registry. Contacts are optional during onboarding; enter all three real friend wallets before creating a group bill or storing demo rules. The financial dashboard opens only after profile ownership, active delegate access and profile linking are confirmed. Registration passes a genuine MemWal object to the contract, rather than a user-entered ID. Existing shared-account memories are not automatically copied or deleted.
 3. Optionally store the twelve **demo preferences** on Walrus. They are explicitly labelled examples, not fabricated past spending. The app waits for all twelve actual blob commits. Recall your memories with a personal-message signature before applying their rules.
 4. Create a bill. Food and eligible drinks are allocated in exact micro-USDC, including the creator's share. Alex's demo rule excludes alcohol; Sam's demo rule requires upfront funding only when his share is **strictly above 40 USDC**. Confirmed settlement timing can also generate an upfront rule when the observed average lag exceeds seven days.
 5. A split without upfront shares starts active. A split with upfront shares remains pending: switch to each flagged debtor's wallet and fund its exact share; switch back to the creator to activate. Only then are escrow funds released to the creator and standard settlement enabled.
 6. A creator can cancel a pending split. Funded participants can refund after cancellation, or independently after the 24-hour funding deadline. Cancelled/expired splits cannot activate. Settlements reject underpayment, overpayment, and duplicate payment.
-7. After a successful settlement/activation, the app verifies package-emitted on-chain events and writes timing observations only to the signing wallet's account. Recipients choose **Import my confirmed settlements** to learn from their own history. Each signed request scans five settlement events and returns a cursor for the next page; continue until complete. Cursor progress is held only in the current browser page. Import verifies successful transactions, event identities, wallet participation and exact split types; stable event identifiers prevent duplicate observations on retries. A memory failure does not reclassify a confirmed payment as failed: use the memory-only retry button instead of paying twice. A payer without memory onboarding can still pay and import the observation after completing setup.
+7. Every payer must complete MemWal onboarding before funding or settling. After a successful settlement/activation, the app verifies package-emitted on-chain events and writes timing observations only to the signing wallet's account. Recipients choose **Import my confirmed settlements** to learn from their own history. Each signed request scans five settlement events and returns a cursor for the next page; continue until complete. Cursor progress is held only in the current browser page. Import verifies successful transactions, event identities, wallet participation and exact split types; stable event identifiers prevent duplicate observations on retries. A relayer failure after payment remains a memory failure: use the memory-only retry button instead of paying twice. It never enables a different payment method or bypasses onboarding.
 8. A registered wallet can lock USDC for exactly 24 hours. The builder selects sufficient real USDC coins across pages. The contract consumes and transfers a reserve coin back to the owner, enforcing the registered floor on chain. The owner can unlock only after maturity. The vault cannot be transferred to another wallet.
 9. Record a reflection, analyze notes into facts, recall memories, or restore a namespace's index. These operations require short-lived signatures over the exact action/payload and web origin. Before creating any SDK client, the server verifies the signing wallet's live registry mapping, account type, owner, active state, delegate grant and profile link. It ignores caller-supplied account IDs. Restore reports partial recovery or permanent errors honestly.
-10. Choose **Revoke app memory access** to remove the delegate through your wallet. The app checks the live grant on future requests and clears recalled data when revocation is confirmed or detected. Forward revocation does not retract older keys or plaintext already obtained by a delegate; protecting historical ciphertext requires re-encryption. Frozen/quarantined accounts must be managed in MemWal before memory can resume. Financial actions remain available independently of the memory delegate.
+10. Choose **Revoke app memory access** to remove the delegate through your wallet. The app checks the live grant on future requests and clears recalled data when revocation is confirmed or detected. The financial dashboard closes until authorization is restored. Forward revocation does not retract older keys or plaintext already obtained by a delegate; protecting historical ciphertext requires re-encryption. Frozen/quarantined accounts must be managed in MemWal before new activity can resume. A limited recovery panel lets existing members cancel pending splits, refund eligible escrow and unlock matured vaults. These actions still verify the actual owned MemWal account and profile link, and return existing USDC rather than making new payments.
 
 Run the read-only readiness check once the profile exists and at least ten unique memories are recallable:
 
@@ -138,7 +189,7 @@ Run the read-only readiness check once the profile exists and at least ten uniqu
 npm.cmd run verify:mainnet
 ```
 
-It discovers `VERIFY_WALLET_ADDRESS`'s account from the registry and checks its owner, active delegate grant and matching profile. It also requires authenticated Mainnet chain/checkpoint access, the shared registry's exact type, required published functions, Circle USDC metadata, delegate identity, matching relayer Mainnet configuration, relayer health, and at least ten distinct readable Walrus blobs across that user's three namespaces. It does not seed data or submit a transaction. No SolvencyLoop Move schema change is needed for user-owned memory: the existing per-profile `memwal_account_id` stores the link, while MemWal's contract enforces account/delegate ownership.
+It discovers `VERIFY_WALLET_ADDRESS`'s profile and MemWal account through their directories and checks their owners, active delegate grant and matching link. It also requires authenticated Mainnet chain/checkpoint access, the shared registry's exact type, the owned profile's fields and non-transferable abilities, every current function parameter's type and mutability (including UserProfile and MemWalAccount references), Circle USDC metadata, delegate identity, matching relayer Mainnet configuration, relayer health, and at least ten distinct readable Walrus blobs across that user's three namespaces. It rejects both the address-only scaffold and the earlier registry-based profile/payment interface. It does not seed data or submit a transaction. Deploy the current object-factory package and configure its package/registry IDs together.
 
 ## Validation and production
 
@@ -148,6 +199,7 @@ npm.cmd run lint
 npm.cmd test
 npm.cmd run move:build
 npm.cmd run move:test
+npm.cmd run move:verify-bundle
 npm.cmd run build
 npm.cmd start
 ```

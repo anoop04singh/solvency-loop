@@ -1,0 +1,8 @@
+# Existing external protocol binding, not a publication performed by SolvencyLoop.
+# IDs match the official Mainnet relayer/app configuration checked 2026-10-30.
+# Dependency source verification remains mandatory before publishing the root package.
+[published.mainnet]
+chain-id = "35834a8a"
+published-at = "0xe7c16fbea0560e7057e2bf7422feaa4fb313749fc69c9e9092fac7a33b81d7f5"
+original-id = "0xe7c16fbea0560e7057e2bf7422feaa4fb313749fc69c9e9092fac7a33b81d7f5"
+version = 1

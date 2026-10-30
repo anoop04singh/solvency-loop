@@ -1,0 +1,11 @@
+[package]
+name = "memwal"
+version = "3.0.0"
+edition = "2024"
+implicit-dependencies = false
+
+[dependencies]
+std = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "85b460a63fd76a15672bbe4820bde6db78a3cfb8" }
+sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "85b460a63fd76a15672bbe4820bde6db78a3cfb8" }
+
+

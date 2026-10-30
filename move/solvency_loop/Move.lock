@@ -16,8 +16,14 @@ use_environment = "mainnet"
 manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
 deps = { MoveStdlib = "MoveStdlib" }
 
+[pinned.mainnet.memwal]
+source = { local = '..\vendor\memwal' }
+use_environment = "mainnet"
+manifest_digest = "3D53A02BD8D005648F43EA70C35A7F880581D68372F919DFC786252FED995769"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
 [pinned.mainnet.solvency_loop]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "B240959CBCEBF02E1C815A918B4F0B6C89505068128E599E46F16FF0C105C43C"
-deps = { Sui = "Sui" }
+manifest_digest = "2DCE49A0A82D68EB5A53A6520D84C6E9670584BE02429907813B565356C88C74"
+deps = { memwal = "memwal", std = "MoveStdlib", sui = "Sui" }

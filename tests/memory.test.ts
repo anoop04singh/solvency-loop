@@ -4,7 +4,7 @@ import { executeMemoryRequest, type MemoryDependencies } from '../src/lib/memory
 import type { MemoryPayload } from '../src/lib/memory-protocol';
 import { SUI_MAINNET_USDC_TYPE } from '../src/lib/config';
 const address = '0x' + '1'.repeat(64);
-const state = { wallet: address, handle: 'test', memwalAccountId: address, safeFloorUsdc: 300, contacts: [], usdcBalance: 500, suiBalance: 1, latestCheckpoint: '123', isRegisteredOnChain: true };
+const state = { profileId: address, wallet: address, handle: 'test', memwalAccountId: address, safeFloorUsdc: 300, contacts: [], usdcBalance: 500, suiBalance: 1, latestCheckpoint: '123', isRegisteredOnChain: true };
 function dependencies(overrides: Partial<ReturnType<MemoryDependencies['client']>> = {}) {
   const client = { recall: async () => ({ results: [], total: 0 }), rememberAndWait: async () => ({ id: 'job', blob_id: 'real-test-result', namespace: 'test', owner: address }), analyzeAndWait: async () => ({}), restore: async () => ({ failed: 0, restored: 1, total: 1, skipped: 0, truncated: false, namespace: 'test', owner: address }), ...overrides };
   return { client: () => client, access: async () => ({ accountId: address, owner: address, active: true, delegateAuthorized: true, delegateCount: 1 }), state: async () => state, transaction: async () => ({ effects: { status: { status: 'success' } }, events: [] }), object: async () => ({}) } as unknown as MemoryDependencies;

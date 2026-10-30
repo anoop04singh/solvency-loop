@@ -12,6 +12,7 @@
     "test": "tsx --test tests/*.test.ts",
     "move:build": "sui move build --path move/solvency_loop --build-env mainnet",
     "move:test": "sui move test --path move/solvency_loop --build-env mainnet",
+    "move:verify-bundle": "node scripts/verify-move-bundle.mjs",
     "verify:mainnet": "tsx scripts/verify-mainnet-readiness.ts",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
     "rpc:bridge": "node scripts/tatum-rpc-bridge.mjs"

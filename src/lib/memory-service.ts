@@ -48,7 +48,7 @@ export async function executeMemoryRequest(p: MemoryPayload, nonce: string, deps
 async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: MemoryDependencies) {
   const wallet = p.walletAddress.toLowerCase(), category = p.category || 'social_split_trust';
   const state = await deps.state(wallet); // Live checkpoint anchors every operation.
-  if (!state.isRegisteredOnChain) throw new Error('Register your on-chain profile first.');
+  if (!state.isRegisteredOnChain || !state.profileId || state.wallet !== wallet) throw new Error('Register your wallet-owned on-chain profile first.');
   const account = await deps.access(wallet, state.memwalAccountId);
   const scopedClient = (cat: SolvencyNamespaceCategory) => deps.client(wallet, cat, account.accountId);
   const anchor = { checkpoint: state.latestCheckpoint, gateway: 'https://sui-mainnet.gateway.tatum.io', usdcBalance: state.usdcBalance };

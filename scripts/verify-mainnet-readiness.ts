@@ -5,6 +5,7 @@ import { createScopedMemWalClient, delegateKeypair } from '../src/lib/walrus-tat
 import { tatumSuiClient } from '../src/lib/tatum-rpc-client';
 import { fetchFullUserStateViaTatum } from '../src/lib/onchain-user-manager';
 import { requireWalletMemoryAccess } from '../src/lib/memwal-account';
+import { assertContractInterface, assertProfileLayout, CORE_INTERFACE } from '../src/lib/contract-interface';
 
 export async function verifyMainnetReadiness(log = console.log) {
   const required = ['TATUM_API_KEY', 'MEMWAL_DELEGATE_PRIVATE_KEY', 'NEXT_PUBLIC_SOLVENCY_PACKAGE_ID', 'NEXT_PUBLIC_SOLVENCY_REGISTRY_ID', 'NEXT_PUBLIC_MEMWAL_AGENT_ID', 'NEXT_PUBLIC_MEMWAL_PACKAGE_ID', 'NEXT_PUBLIC_MEMWAL_REGISTRY_ID', 'VERIFY_WALLET_ADDRESS'];
@@ -23,14 +24,16 @@ export async function verifyMainnetReadiness(log = console.log) {
   if (!/^\d+$/.test(checkpoint)) throw new Error('Invalid checkpoint response.');
   if (registry.error || registry.data?.content?.dataType !== 'moveObject' || registry.data.content.type !== packageId + '::core::SolvencyRegistry' || !registry.data.owner || typeof registry.data.owner !== 'object' || !('Shared' in registry.data.owner)) throw new Error('Registry must be the deployed package’s shared SolvencyRegistry object.');
   if (coin?.decimals !== 6 || coin.symbol !== 'USDC') throw new Error('Circle USDC metadata verification failed.');
+  assertProfileLayout(await tatumSuiClient.getNormalizedMoveStruct({ package: packageId, module: 'core', struct: 'UserProfile' }));
   const profile = await fetchFullUserStateViaTatum(wallet);
   if (!profile.isRegisteredOnChain) throw new Error('The verification wallet must have a registered on-chain profile.');
   const memoryAccount = await requireWalletMemoryAccess(wallet, profile.memwalAccountId);
-  for (const name of ['register_user', 'add_contact', 'remove_contact', 'create_group_split', 'fund_split_share', 'activate_group_split', 'cancel_group_split', 'refund_escrow', 'settle_split_share', 'lock_in_cooldown_vault', 'unlock_cooldown_vault']) {
-    await tatumSuiClient.getNormalizedMoveFunction({ package: packageId, module: 'core', function: name });
+  for (const name of Object.keys(CORE_INTERFACE) as (keyof typeof CORE_INTERFACE)[]) {
+    const fn = await tatumSuiClient.getNormalizedMoveFunction({ package: packageId, module: 'core', function: name });
+    assertContractInterface(name, fn, packageId, process.env.NEXT_PUBLIC_MEMWAL_PACKAGE_ID!);
   }
   log('[PASS] Authenticated Tatum Mainnet checkpoint #' + checkpoint + ', shared registry, contract functions, and Circle USDC.');
-  log('[PASS] Verification wallet owns MemWal account ' + memoryAccount.accountId + ', with an active app delegate and matching on-chain profile.');
+  log('[PASS] Verification wallet owns profile ' + profile.profileId + ' and MemWal account ' + memoryAccount.accountId + ', with an active app delegate and matching profile link.');
   const memwalUrl = process.env.MEMWAL_SERVER_URL || 'https://relayer.memory.walrus.xyz';
   if (new URL(memwalUrl).protocol !== 'https:') throw new Error('Use an HTTPS Mainnet MemWal relayer.');
   const configResponse = await fetch(memwalUrl.replace(/\/$/, '') + '/config', { signal: AbortSignal.timeout(15_000) });

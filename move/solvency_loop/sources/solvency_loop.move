@@ -7,23 +7,27 @@ module solvency_loop::core {
     use sui::dynamic_field as df;
     use sui::vec_map::{Self, VecMap};
     use sui::event;
+    use memwal::account::{Self, MemWalAccount};
 
     const ECooldownStillActive: u64 = 101;
     const ENotAuthorized: u64 = 102;
     const EInvalidSplitAmount: u64 = 103;
     const EAlreadySettled: u64 = 104;
-    const EProfileNotFound: u64 = 105;
     const EInvalidParticipants: u64 = 106;
     const ENotActive: u64 = 107;
     const EInvalidState: u64 = 108;
     const ELiquidityFloor: u64 = 109;
     const EWrongCoin: u64 = 110;
     const EInvalidText: u64 = 111;
+    const EMemWalRequired: u64 = 112;
+    const EAlreadyRegistered: u64 = 113;
     const DAY_MS: u64 = 86_400_000;
 
     public struct SolvencyRegistry has key { id: UID, total_users: u64 }
-    public struct UserProfile has store, copy, drop {
-        wallet: address, handle: String, memwal_account_id: address,
+    // Only this module can create or transfer profiles. A wallet has exactly one
+    // profile, and its contacts can be updated without mutating the registry.
+    public struct UserProfile has key {
+        id: UID, wallet: address, handle: String, memwal_account_id: address,
         safe_floor_usdc: u64, contacts: VecMap<address, String>, registered_at_ms: u64,
     }
     public struct CooldownVault<phantom T> has key {
@@ -41,7 +45,10 @@ module solvency_loop::core {
         is_active: bool, is_cancelled: bool, created_at_ms: u64, funding_deadline_ms: u64,
     }
     public struct UserRegisteredEvent has copy, drop {
-        wallet: address, handle: String, memwal_account_id: address, safe_floor_usdc: u64,
+        wallet: address, profile_id: ID, handle: String, memwal_account_id: address, safe_floor_usdc: u64,
+    }
+    public struct UserProfileUpdatedEvent has copy, drop {
+        wallet: address, profile_id: ID, handle: String, memwal_account_id: address, safe_floor_usdc: u64,
     }
     public struct SplitCreatedEvent has copy, drop {
         split_id: ID, creator: address, title: String, total_amount: u64, created_at_ms: u64,
@@ -69,42 +76,69 @@ module solvency_loop::core {
     }
     fun valid_text(text: &String, max: u64) { assert!(text.length() > 0 && text.length() <= max, EInvalidText); }
 
-    public fun register_user(registry: &mut SolvencyRegistry, handle: String, memwal_account_id: address,
-        safe_floor_usdc: u64, clock: &Clock, ctx: &mut TxContext) {
-        valid_text(&handle, 64);
-        assert!(memwal_account_id != @0x0, EInvalidState);
-        let sender = ctx.sender();
-        if (df::exists(&registry.id, sender)) {
-            let profile: &mut UserProfile = df::borrow_mut(&mut registry.id, sender);
-            profile.handle = handle;
-            profile.memwal_account_id = memwal_account_id;
-            profile.safe_floor_usdc = safe_floor_usdc;
-        } else {
-            df::add(&mut registry.id, sender, UserProfile {
-                wallet: sender, handle, memwal_account_id, safe_floor_usdc,
-                contacts: vec_map::empty(), registered_at_ms: clock.timestamp_ms(),
-            });
-            registry.total_users = registry.total_users + 1;
-        };
-        event::emit(UserRegisteredEvent { wallet: sender, handle, memwal_account_id, safe_floor_usdc });
+    fun assert_memory_owner(memory: &MemWalAccount, sender: address, active_required: bool) {
+        assert!(account::owner(memory) == sender, EMemWalRequired);
+        if (active_required) { assert!(account::is_active(memory) && !account::is_admin_quarantined(memory), EMemWalRequired); };
     }
-    public fun add_contact(registry: &mut SolvencyRegistry, friend_wallet: address, friend_handle: String, ctx: &mut TxContext) {
+    fun assert_onboarded(profile: &UserProfile, memory: &MemWalAccount, sender: address, active_required: bool) {
+        assert!(profile.wallet == sender, ENotAuthorized);
+        assert_memory_owner(memory, sender, active_required);
+        assert!(profile.memwal_account_id == object::id_address(memory), EMemWalRequired);
+    }
+    public fun register_user(registry: &mut SolvencyRegistry, handle: String, memory: &MemWalAccount,
+        safe_floor_usdc: u64, friend_wallets: vector<address>, friend_handles: vector<String>, clock: &Clock, ctx: &mut TxContext) {
+        valid_text(&handle, 64);
         let sender = ctx.sender();
-        assert!(friend_wallet != sender && friend_wallet != @0x0, EInvalidParticipants);
+        assert_memory_owner(memory, sender, true);
+        assert!(!df::exists(&registry.id, sender), EAlreadyRegistered);
+        assert!(friend_wallets.length() == friend_handles.length(), EInvalidParticipants);
+        let memwal_account_id = object::id_address(memory);
+        let mut profile = UserProfile { id: object::new(ctx), wallet: sender, handle, memwal_account_id, safe_floor_usdc,
+            contacts: vec_map::empty(), registered_at_ms: clock.timestamp_ms() };
+        let mut i = 0;
+        while (i < friend_wallets.length()) {
+            let contact_wallet = friend_wallets[i];
+            assert!(!profile.contacts.contains(&contact_wallet), EInvalidParticipants);
+            put_contact(&mut profile, contact_wallet, friend_handles[i]);
+            i = i + 1;
+        };
+        let profile_id = object::id(&profile);
+        // Directory values are IDs, never nested profiles or shared balances.
+        df::add(&mut registry.id, sender, profile_id);
+        registry.total_users = registry.total_users + 1;
+        event::emit(UserRegisteredEvent { wallet: sender, profile_id, handle, memwal_account_id, safe_floor_usdc });
+        transfer::transfer(profile, sender);
+    }
+    public fun update_profile(profile: &mut UserProfile, handle: String, memory: &MemWalAccount,
+        safe_floor_usdc: u64, ctx: &mut TxContext) {
+        assert!(profile.wallet == ctx.sender(), ENotAuthorized);
+        assert_memory_owner(memory, ctx.sender(), true);
+        valid_text(&handle, 64);
+        profile.handle = handle;
+        profile.memwal_account_id = object::id_address(memory);
+        profile.safe_floor_usdc = safe_floor_usdc;
+        event::emit(UserProfileUpdatedEvent { wallet: ctx.sender(), profile_id: object::id(profile),
+            handle, memwal_account_id: profile.memwal_account_id, safe_floor_usdc });
+    }
+    fun put_contact(profile: &mut UserProfile, friend_wallet: address, friend_handle: String) {
+        assert!(friend_wallet != profile.wallet && friend_wallet != @0x0, EInvalidParticipants);
         valid_text(&friend_handle, 64);
-        assert!(df::exists(&registry.id, sender), EProfileNotFound);
-        let profile: &mut UserProfile = df::borrow_mut(&mut registry.id, sender);
         if (profile.contacts.contains(&friend_wallet)) { profile.contacts.remove(&friend_wallet); };
         profile.contacts.insert(friend_wallet, friend_handle);
     }
-    public fun remove_contact(registry: &mut SolvencyRegistry, friend_wallet: address, ctx: &mut TxContext) {
-        let profile: &mut UserProfile = df::borrow_mut(&mut registry.id, ctx.sender());
+    public fun add_contact(profile: &mut UserProfile, memory: &MemWalAccount, friend_wallet: address, friend_handle: String, ctx: &mut TxContext) {
+        assert_onboarded(profile, memory, ctx.sender(), true);
+        put_contact(profile, friend_wallet, friend_handle);
+    }
+    public fun remove_contact(profile: &mut UserProfile, memory: &MemWalAccount, friend_wallet: address, ctx: &mut TxContext) {
+        assert_onboarded(profile, memory, ctx.sender(), true);
         if (profile.contacts.contains(&friend_wallet)) { profile.contacts.remove(&friend_wallet); };
     }
 
-    public fun create_group_split<T>(title: String, total_bill_amount: u64, debtors: vector<address>,
+    public fun create_group_split<T>(profile: &UserProfile, memory: &MemWalAccount, title: String, total_bill_amount: u64, debtors: vector<address>,
         amounts: vector<u64>, escrow_flags: vector<bool>, clock: &Clock, ctx: &mut TxContext) {
         assert_usdc<T>();
+        assert_onboarded(profile, memory, ctx.sender(), true);
         valid_text(&title, 120);
         let len = debtors.length();
         assert!(len > 0 && len <= 64 && amounts.length() == len && escrow_flags.length() == len, EInvalidParticipants);
@@ -136,7 +170,9 @@ module solvency_loop::core {
         event::emit(SplitCreatedEvent { split_id: object::id(&split), creator: ctx.sender(), title, total_amount: total_bill_amount, created_at_ms: now });
         transfer::share_object(split);
     }
-    public fun fund_split_share<T>(split: &mut GroupSplitEscrow<T>, payment: Coin<T>, clock: &Clock, ctx: &mut TxContext) {
+    public fun fund_split_share<T>(profile: &UserProfile, memory: &MemWalAccount, split: &mut GroupSplitEscrow<T>, payment: Coin<T>, clock: &Clock, ctx: &mut TxContext) {
+        assert_usdc<T>();
+        assert_onboarded(profile, memory, ctx.sender(), true);
         assert!(!split.is_active && !split.is_cancelled && clock.timestamp_ms() <= split.funding_deadline_ms, EInvalidState);
         let payer = ctx.sender();
         let split_id = object::id(split);
@@ -149,7 +185,9 @@ module solvency_loop::core {
         split.escrowed_balance.join(payment.into_balance());
         event::emit(EscrowFundedEvent { split_id, payer, amount });
     }
-    public fun activate_group_split<T>(split: &mut GroupSplitEscrow<T>, clock: &Clock, ctx: &mut TxContext) {
+    public fun activate_group_split<T>(profile: &UserProfile, memory: &MemWalAccount, split: &mut GroupSplitEscrow<T>, clock: &Clock, ctx: &mut TxContext) {
+        assert_usdc<T>();
+        assert_onboarded(profile, memory, ctx.sender(), true);
         assert!(ctx.sender() == split.creator, ENotAuthorized);
         assert!(!split.is_active && !split.is_cancelled && split.pending_upfront == 0 && clock.timestamp_ms() <= split.funding_deadline_ms, EInvalidState);
         let split_id = object::id(split);
@@ -173,13 +211,17 @@ module solvency_loop::core {
         else { funds.destroy_zero(); };
         event::emit(SplitActivatedEvent { split_id, activated_at_ms: now });
     }
-    public fun cancel_group_split<T>(split: &mut GroupSplitEscrow<T>, ctx: &mut TxContext) {
+    public fun cancel_group_split<T>(profile: &UserProfile, memory: &MemWalAccount, split: &mut GroupSplitEscrow<T>, ctx: &mut TxContext) {
+        assert_usdc<T>();
+        assert_onboarded(profile, memory, ctx.sender(), false);
         assert!(ctx.sender() == split.creator, ENotAuthorized);
         assert!(!split.is_active, EInvalidState);
         split.is_cancelled = true;
     }
     #[allow(lint(self_transfer))]
-    public fun refund_escrow<T>(split: &mut GroupSplitEscrow<T>, clock: &Clock, ctx: &mut TxContext) {
+    public fun refund_escrow<T>(profile: &UserProfile, memory: &MemWalAccount, split: &mut GroupSplitEscrow<T>, clock: &Clock, ctx: &mut TxContext) {
+        assert_usdc<T>();
+        assert_onboarded(profile, memory, ctx.sender(), false);
         assert!(!split.is_active && (split.is_cancelled || clock.timestamp_ms() > split.funding_deadline_ms), EInvalidState);
         let split_id = object::id(split);
         let payer = ctx.sender();
@@ -192,7 +234,9 @@ module solvency_loop::core {
         transfer::public_transfer(coin::from_balance(funds, ctx), payer);
         event::emit(EscrowRefundedEvent { split_id, payer, amount });
     }
-    public fun settle_split_share<T>(split: &mut GroupSplitEscrow<T>, payment: Coin<T>, clock: &Clock, ctx: &mut TxContext) {
+    public fun settle_split_share<T>(profile: &UserProfile, memory: &MemWalAccount, split: &mut GroupSplitEscrow<T>, payment: Coin<T>, clock: &Clock, ctx: &mut TxContext) {
+        assert_usdc<T>();
+        assert_onboarded(profile, memory, ctx.sender(), true);
         assert!(split.is_active && !split.is_cancelled, ENotActive);
         let split_id = object::id(split);
         let payer = ctx.sender();
@@ -210,12 +254,11 @@ module solvency_loop::core {
     // Consume and return the reserve to the sender. A borrowed coin belonging to
     // somebody else cannot be presented as proof of the sender's liquidity.
     #[allow(lint(self_transfer))]
-    public fun lock_in_cooldown_vault<T>(registry: &SolvencyRegistry, funds: Coin<T>, reserve: Coin<T>,
+    public fun lock_in_cooldown_vault<T>(profile: &UserProfile, memory: &MemWalAccount, funds: Coin<T>, reserve: Coin<T>,
         trigger_memory_namespace: String, clock: &Clock, ctx: &mut TxContext) {
         assert_usdc<T>();
         let sender = ctx.sender();
-        assert!(df::exists(&registry.id, sender), EProfileNotFound);
-        let profile: &UserProfile = df::borrow(&registry.id, sender);
+        assert_onboarded(profile, memory, sender, true);
         assert!(reserve.value() >= profile.safe_floor_usdc, ELiquidityFloor);
         transfer::public_transfer(reserve, sender);
         assert!(funds.value() > 0, EInvalidSplitAmount);
@@ -228,7 +271,9 @@ module solvency_loop::core {
             unlock_time_ms, namespace: trigger_memory_namespace });
         transfer::transfer(vault, sender);
     }
-    public fun unlock_cooldown_vault<T>(vault: CooldownVault<T>, clock: &Clock, ctx: &mut TxContext) {
+    public fun unlock_cooldown_vault<T>(profile: &UserProfile, memory: &MemWalAccount, vault: CooldownVault<T>, clock: &Clock, ctx: &mut TxContext) {
+        assert_usdc<T>();
+        assert_onboarded(profile, memory, ctx.sender(), false);
         let CooldownVault { id, owner, locked_balance, unlock_time_ms, trigger_memory_namespace: _ } = vault;
         assert!(ctx.sender() == owner, ENotAuthorized);
         assert!(clock.timestamp_ms() >= unlock_time_ms, ECooldownStillActive);
@@ -237,6 +282,8 @@ module solvency_loop::core {
     }
 
     #[test_only] public fun init_for_testing(ctx: &mut TxContext) { init(ctx); }
+    #[test_only] public fun profile_id_for_testing(r: &SolvencyRegistry, wallet: address): ID { *df::borrow(&r.id, wallet) }
+    #[test_only] public fun profile_for_testing(p: &UserProfile): (address, String, u64, u64) { (p.wallet, p.handle, p.safe_floor_usdc, p.contacts.length()) }
     #[test_only] public fun users_for_testing(r: &SolvencyRegistry): u64 { r.total_users }
     #[test_only] public fun state_for_testing<T>(s: &GroupSplitEscrow<T>): (bool, u64, u64) { (s.is_active, s.pending_upfront, s.escrowed_balance.value()) }
     #[test_only] public fun settled_for_testing<T>(s: &GroupSplitEscrow<T>, debtor: address): bool { s.participants.get(&debtor).is_settled }

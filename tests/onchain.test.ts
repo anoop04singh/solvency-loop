@@ -3,15 +3,14 @@ import assert from 'node:assert/strict';
 import { tatumSuiClient } from '../src/lib/tatum-rpc-client';
 import { buildLockInCooldownVaultTx, fetchActiveGroupSplitsViaTatum, fetchOwnedCooldownVaultsViaTatum } from '../src/lib/onchain-user-manager';
 import { SUI_MAINNET_USDC_TYPE } from '../src/lib/config';
+import { installOnboardingFixture } from './fixtures/onboarding';
 const a = (n: number) => '0x' + n.toString(16).padStart(64, '0');
 process.env.NEXT_PUBLIC_SOLVENCY_PACKAGE_ID = a(1); process.env.NEXT_PUBLIC_SOLVENCY_REGISTRY_ID = a(2);
 test('vault builder paginates coins and rejects an insufficient actual reserve', async () => {
-  const backup = { getAllBalances: tatumSuiClient.getAllBalances, getLatestCheckpointSequenceNumber: tatumSuiClient.getLatestCheckpointSequenceNumber, getDynamicFieldObject: tatumSuiClient.getDynamicFieldObject, getCoins: tatumSuiClient.getCoins };
+  const fixture = installOnboardingFixture();
+  const backup = { getCoins: tatumSuiClient.getCoins };
   const cursors: unknown[] = [];
   Object.assign(tatumSuiClient, {
-    getAllBalances: async () => [{ coinType: SUI_MAINNET_USDC_TYPE, totalBalance: '500000000' }],
-    getLatestCheckpointSequenceNumber: async () => '123',
-    getDynamicFieldObject: async () => ({ data: { content: { dataType: 'moveObject', fields: { value: { fields: { handle: 'owner', memwal_account_id: a(3), safe_floor_usdc: '300000000', contacts: { fields: { contents: [] } } } } } } } }),
     getCoins: async ({ cursor }: { cursor: string | null }) => { cursors.push(cursor); return cursor ? { data: [{ coinObjectId: a(11), balance: '300000000' }], hasNextPage: false } : { data: [{ coinObjectId: a(10), balance: '100000000' }], hasNextPage: true, nextCursor: 'next-page' }; },
   });
   try {
@@ -21,7 +20,7 @@ test('vault builder paginates coins and rejects an insufficient actual reserve',
     const move = tx.getData().commands[2].MoveCall!; assert.equal(move.function, 'lock_in_cooldown_vault'); assert.deepEqual(move.typeArguments, [SUI_MAINNET_USDC_TYPE]);
     Object.assign(tatumSuiClient, { getCoins: async () => ({ data: [{ coinObjectId: a(10), balance: '399999999' }], hasNextPage: false }) });
     await assert.rejects(buildLockInCooldownVaultTx({ ownerAddress: a(5), amountUsdc: 100 }), /Insufficient Circle USDC/);
-  } finally { Object.assign(tatumSuiClient, backup); }
+  } finally { Object.assign(tatumSuiClient, backup); fixture.restore(); }
 });
 test('split history and owned vault readers continue through every page', async () => {
   const backup = { queryEvents: tatumSuiClient.queryEvents, multiGetObjects: tatumSuiClient.multiGetObjects, getOwnedObjects: tatumSuiClient.getOwnedObjects };
