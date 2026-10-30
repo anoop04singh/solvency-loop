@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import {
   createNetworkConfig,
   SuiClientProvider,
@@ -14,9 +16,8 @@ const { networkConfig } = createNetworkConfig({
   },
 });
 
-const queryClient = new QueryClient();
-
 export function SolvencyProviders({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 15_000 } } }));
   return (
     <QueryClientProvider client={queryClient}>
       <SuiClientProvider networks={networkConfig} defaultNetwork="mainnet">

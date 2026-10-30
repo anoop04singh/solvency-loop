@@ -1,4 +1,11 @@
+import type { Metadata } from 'next';
+import './globals.css';
 import { SolvencyProviders } from "./providers";
+
+export const metadata: Metadata = {
+  title: 'SolvencyLoop | Behavioral Liquidity Engine',
+  description: 'Wallet-owned profiles, USDC splits, and cooldown vaults on Sui Mainnet with Walrus memory.',
+};
 
 export default function RootLayout({
   children,

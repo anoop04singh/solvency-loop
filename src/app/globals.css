@@ -1,0 +1,12 @@
+@import '../../design-tokens/tokens.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body { background: var(--color-bg-primary); color: var(--color-text-primary); font-family: var(--font-family-sans); }
+@layer components {
+  .panel { @apply rounded-xl border border-secondary bg-primary p-xl shadow-xs space-y-lg; }
+  .button { @apply inline-flex items-center justify-center rounded-lg border border-transparent bg-brand-solid px-lg py-sm text-sm font-semibold text-primary-on-brand shadow-xs hover:bg-brand-solid-hover focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50 disabled:cursor-not-allowed; }
+  .button-secondary { @apply button border-primary bg-primary text-secondary hover:bg-primary-hover; }
+  .field { @apply w-full rounded-md bg-primary px-lg py-sm text-sm text-primary border border-primary placeholder:text-placeholder focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50; }
+  .badge { @apply inline-flex items-center rounded-full border border-secondary bg-secondary px-md py-xxs text-xs font-medium text-secondary; }
+}

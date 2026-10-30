@@ -1,9 +1,14 @@
 [package]
 name = "solvency_loop"
-edition = "2024.beta"
+edition = "2024"
 
 [dependencies]
-Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/mainnet" }
+# Official mainnet-v1.72.2 release, matching the tested Sui CLI.
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "85b460a63fd76a15672bbe4820bde6db78a3cfb8" }
 
 [addresses]
 solvency_loop = "0x0"
+circle_usdc = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7"
+
+[environments]
+mainnet = "35834a8a"

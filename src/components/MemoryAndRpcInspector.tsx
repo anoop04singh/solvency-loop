@@ -1,66 +1,13 @@
-import React from "react";
-
-interface Props {
-  memories: any[];
-  rpcLogs: string[];
-}
-
-export function MemoryAndRpcInspector({ memories, rpcLogs }: Props) {
-  return (
-    <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
-      <div className="rounded-xl border border-secondary bg-primary p-xl space-y-md shadow-xs">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-secondary">
-            Recalled Walrus Mainnet Memories ({memories.length})
-          </h3>
-          <span className="text-xs font-mono text-brand-primary">
-            @mysten-incubation/memwal
-          </span>
-        </div>
-        <div className="space-y-sm max-h-64 overflow-y-auto text-xs font-mono">
-          {memories.length === 0 ? (
-            <div className="flex gap-lg rounded-xl bg-utility-gray-50 p-xl">
-              <div>
-                <p className="text-sm font-semibold text-utility-gray-700">No Memories Recalled</p>
-                <p className="mt-xxs text-sm text-tertiary">Click &quot;Commit 12 Behavioral Memories&quot; to populate your Mainnet namespace.</p>
-              </div>
-            </div>
-          ) : (
-            memories.map((m, idx) => (
-              <div
-                key={idx}
-                className="p-md rounded bg-secondary border border-secondary space-y-xs"
-              >
-                <div className="flex items-center justify-between text-xs text-tertiary">
-                  <span>Namespace: {m.namespace || "default"}</span>
-                  {typeof m.distance === "number" && (
-                    <span>Distance: {m.distance.toFixed(3)}</span>
-                  )}
-                </div>
-                <div className="text-primary">{m.text}</div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-secondary bg-primary p-xl space-y-md shadow-xs">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-secondary">
-            Tatum Sui Mainnet RPC & MemWal Execution Stream
-          </h3>
-          <span className="text-xs font-mono text-utility-success-700">
-            sui-mainnet.gateway.tatum.io
-          </span>
-        </div>
-        <div className="space-y-xs max-h-64 overflow-y-auto text-xs font-mono text-secondary">
-          {rpcLogs.map((entry, idx) => (
-            <div key={idx} className="border-b border-secondary pb-xs">
-              {entry}
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
+"use client";
+import { useState } from 'react';
+import { CATEGORIES, type SolvencyNamespaceCategory } from '@/lib/config';
+import type { RecalledMemory } from '@/lib/memory-protocol';
+interface Props { memories: RecalledMemory[]; logs: string[]; disabled: boolean; onRecall: () => void; onAnalyze: (text: string, category: SolvencyNamespaceCategory) => void; onRestore: (category: SolvencyNamespaceCategory) => void; }
+export function MemoryAndRpcInspector(p: Props) {
+  const [text, setText] = useState(''), [category, setCategory] = useState<SolvencyNamespaceCategory>('habit_regret');
+  return <section className="grid gap-xl lg:grid-cols-2"><div className="panel"><div className="flex flex-wrap items-center justify-between gap-sm"><h2 className="text-lg font-semibold">Walrus memories ({p.memories.length})</h2><button className="button-secondary" disabled={p.disabled} onClick={p.onRecall}>Recall my memories</button></div>
+    <p className="text-xs text-tertiary">Memory requests require your wallet signature. Only confirmed writes are reported as committed.</p>
+    <div className="max-h-80 overflow-y-auto space-y-md">{!p.memories.length && <p className="text-sm text-tertiary">No memories loaded. Recall existing memories, record a reflection, or store the optional demo rules.</p>}{p.memories.map(m => <div key={m.namespace + m.blob_id} className="border-t border-secondary pt-sm space-y-xs"><p className="text-xs text-tertiary">{m.category} · distance {m.distance.toFixed(3)}</p><p className="text-sm break-words">{m.text}</p><p className="text-xs font-mono text-tertiary break-all">Walrus blob: {m.blob_id}</p></div>)}</div>
+    <div className="border-t border-secondary pt-lg space-y-md"><label className="block space-y-sm text-sm" htmlFor="category">Memory category<select id="category" className="field" value={category} onChange={e => setCategory(e.target.value as SolvencyNamespaceCategory)}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></label><label className="block space-y-sm text-sm" htmlFor="analysis">Extract facts from a note<textarea id="analysis" className="field" rows={2} maxLength={8000} value={text} onChange={e => setText(e.target.value)}/></label><div className="flex flex-wrap gap-sm"><button className="button-secondary" disabled={p.disabled || !text.trim()} onClick={() => p.onAnalyze(text, category)}>Analyze & commit facts</button><button className="button-secondary" disabled={p.disabled} onClick={() => p.onRestore(category)}>Restore category index</button></div></div>
+  </div><div className="panel"><h2 className="text-lg font-semibold">Execution log</h2><p className="text-xs text-tertiary">Sui reads and transaction execution use the authenticated Tatum Mainnet gateway.</p><div className="max-h-96 overflow-y-auto space-y-sm font-mono text-xs">{!p.logs.length && <p className="text-tertiary">Connect a wallet and refresh to load on-chain state.</p>}{p.logs.map((l, i) => <p className="break-words border-t border-secondary pt-sm" key={i}>{l}</p>)}</div></div></section>;
 }

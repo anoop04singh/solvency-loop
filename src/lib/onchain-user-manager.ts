@@ -1,384 +1,164 @@
-import { Transaction } from "@mysten/sui/transactions";
-import {
-  tatumSuiClient,
-  SUI_MAINNET_USDC_TYPE,
-  SUI_NATIVE_TYPE,
-} from "./tatum-rpc-client";
+import { Transaction } from '@mysten/sui/transactions';
+import { tatumSuiClient } from './tatum-rpc-client';
+import { contractConfig, publicConfig, requireAddress, SUI_MAINNET_USDC_TYPE } from './config';
+import { positiveUsdc, usdcToUnits, unitsToUsdc } from './money';
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_SOLVENCY_PACKAGE_ID!;
-const REGISTRY_ID = process.env.NEXT_PUBLIC_SOLVENCY_REGISTRY_ID!;
-
-export interface OnChainContact {
-  walletAddress: string;
-  handle: string;
-}
-
+export interface OnChainContact { walletAddress: string; handle: string; }
 export interface OnChainUserProfile {
-  wallet: string;
-  handle: string;
-  memwalAccountId: string;
-  safeFloorUsdc: number;
-  contacts: OnChainContact[];
-  usdcBalance: number;
-  suiBalance: number;
-  latestCheckpoint: string;
-  isRegisteredOnChain: boolean;
+  wallet: string; handle: string; memwalAccountId: string; safeFloorUsdc: number; contacts: OnChainContact[];
+  usdcBalance: number; suiBalance: number; latestCheckpoint: string; isRegisteredOnChain: boolean;
 }
-
 export interface OnChainGroupSplit {
-  splitId: string;
-  creator: string;
-  title: string;
-  totalBillUsdc: number;
-  createdAtMs: number;
-  participants: Array<{
-    debtor: string;
-    amountOwedUsdc: number;
-    requiresUpfrontEscrow: boolean;
-    isSettled: boolean;
-    settledAtMs: number;
-  }>;
+  splitId: string; creator: string; title: string; totalBillUsdc: number; creatorShareUsdc: number;
+  createdAtMs: number; fundingDeadlineMs: number; isActive: boolean; isCancelled: boolean; pendingUpfront: number;
+  participants: { debtor: string; amountOwedUsdc: number; requiresUpfrontEscrow: boolean; isFunded: boolean; isSettled: boolean; settledAtMs: number; }[];
 }
-
-export interface OnChainCooldownVault {
-  vaultId: string;
-  amountUsdc: number;
-  unlockTimeMs: number;
-  namespace: string;
+export interface OnChainCooldownVault { vaultId: string; amountUsdc: number; unlockTimeMs: number; namespace: string; }
+type Fields = Record<string, unknown>;
+function record(value: unknown): Fields {
+  if (!value || typeof value !== 'object') throw new Error('Unexpected on-chain object content.');
+  const r = value as Fields;
+  return r.fields && typeof r.fields === 'object' ? r.fields as Fields : r;
 }
-
-/**
- * 1. Reads user profile, friend contact graph, live USDC/SUI balances, and checkpoint
- *    directly from Sui Mainnet via Tatum RPC.
- */
-export async function fetchFullUserStateViaTatum(
-  walletAddress: string
-): Promise<OnChainUserProfile> {
-  const [balances, checkpoint, dynamicFieldObj] = await Promise.all([
-    tatumSuiClient.getAllBalances({ owner: walletAddress }),
-    tatumSuiClient.getLatestCheckpointSequenceNumber(),
-    REGISTRY_ID && !REGISTRY_ID.includes("deployed")
-      ? tatumSuiClient
-          .getDynamicFieldObject({
-            parentId: REGISTRY_ID,
-            name: { type: "address", value: walletAddress },
-          })
-          .catch(() => null)
-      : Promise.resolve(null),
+function entries(value: unknown): Fields[] {
+  const contents = record(value).contents;
+  if (!Array.isArray(contents)) throw new Error('Unexpected on-chain VecMap.');
+  return contents.map(record);
+}
+function amount(value: unknown): number {
+  if (value && typeof value === 'object') return unitsToUsdc(String(record(value).value));
+  return unitsToUsdc(String(value));
+}
+export async function fetchFullUserStateViaTatum(walletAddress: string): Promise<OnChainUserProfile> {
+  const wallet = requireAddress(walletAddress);
+  const { registryId } = contractConfig();
+  const [balances, checkpoint, obj] = await Promise.all([
+    tatumSuiClient.getAllBalances({ owner: wallet }), tatumSuiClient.getLatestCheckpointSequenceNumber(),
+    tatumSuiClient.getDynamicFieldObject({ parentId: registryId, name: { type: 'address', value: wallet } }),
   ]);
-
-  const usdcRaw =
-    balances.find((b: any) => b.coinType === SUI_MAINNET_USDC_TYPE)?.totalBalance || "0";
-  const suiRaw =
-    balances.find((b: any) => b.coinType === SUI_NATIVE_TYPE || b.coinType?.endsWith("::sui::SUI"))
-      ?.totalBalance || "0";
-
-  if (
-    !dynamicFieldObj ||
-    !dynamicFieldObj.data ||
-    dynamicFieldObj.data.content?.dataType !== "moveObject"
-  ) {
-    return {
-      wallet: walletAddress,
-      handle: `sui:${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`,
-      memwalAccountId: process.env.NEXT_PUBLIC_MEMWAL_ACCOUNT_ID || "0x0",
-      safeFloorUsdc: 300,
-      contacts: [],
-      usdcBalance: Number(usdcRaw) / 1e6,
-      suiBalance: Number(suiRaw) / 1e9,
-      latestCheckpoint: checkpoint,
-      isRegisteredOnChain: false,
-    };
-  }
-
-  const valueFields = (dynamicFieldObj.data.content as any).fields.value.fields;
-  const rawContactEntries = valueFields.contacts?.fields?.contents || [];
-
-  const contacts: OnChainContact[] = rawContactEntries.map((item: any) => ({
-    walletAddress: item.fields.key,
-    handle: item.fields.value,
-  }));
-
-  return {
-    wallet: walletAddress,
-    handle: valueFields.handle,
-    memwalAccountId: valueFields.memwal_account_id,
-    safeFloorUsdc: Number(valueFields.safe_floor_usdc) / 1e6,
-    contacts,
-    usdcBalance: Number(usdcRaw) / 1e6,
-    suiBalance: Number(suiRaw) / 1e9,
-    latestCheckpoint: checkpoint,
-    isRegisteredOnChain: true,
-  };
+  if (obj.error && obj.error.code !== 'dynamicFieldNotFound') throw new Error('Profile read failed: ' + obj.error.code);
+  const base = { wallet, usdcBalance: unitsToUsdc(balances.find(b => b.coinType === SUI_MAINNET_USDC_TYPE)?.totalBalance || '0'),
+    suiBalance: Number(balances.find(b => b.coinType.endsWith('::sui::SUI'))?.totalBalance || '0') / 1e9, latestCheckpoint: checkpoint };
+  if (!obj.data) return { ...base, handle: '', memwalAccountId: publicConfig().memwalAccountId, safeFloorUsdc: 300, contacts: [], isRegisteredOnChain: false };
+  if (obj.data.content?.dataType !== 'moveObject') throw new Error('Profile is not a Move object.');
+  const p = record(record(obj.data.content.fields).value);
+  return { ...base, handle: String(p.handle), memwalAccountId: String(p.memwal_account_id), safeFloorUsdc: amount(p.safe_floor_usdc),
+    contacts: entries(p.contacts).map(e => ({ walletAddress: String(e.key), handle: String(e.value) })), isRegisteredOnChain: true };
 }
-
-/**
- * 2. Queries active GroupSplitEscrow shared objects on Sui Mainnet via Tatum RPC Events + multiGetObjects
- */
-export async function fetchActiveGroupSplitsViaTatum(): Promise<OnChainGroupSplit[]> {
-  if (!PACKAGE_ID || PACKAGE_ID.includes("deployed")) return [];
-
-  const events = await tatumSuiClient.queryEvents({
-    query: { MoveEventType: `${PACKAGE_ID}::core::SplitCreatedEvent` },
-    limit: 20,
-    order: "descending",
-  });
-
-  const splitIds = events.data
-    .map((e: any) => e.parsedJson?.split_id)
-    .filter(Boolean);
-
-  if (splitIds.length === 0) return [];
-
-  const objects = await tatumSuiClient.multiGetObjects({
-    ids: splitIds,
-    options: { showContent: true },
-  });
-
-  return objects
-    .filter((obj: any) => obj.data?.content?.dataType === "moveObject")
-    .map((obj: any) => {
-      const fields = (obj.data!.content as any).fields;
-      const rawParticipants = fields.participants?.fields?.contents || [];
-
-      return {
-        splitId: obj.data!.objectId,
-        creator: fields.creator,
-        title: fields.title,
-        totalBillUsdc: Number(fields.total_bill_amount) / 1e6,
-        createdAtMs: Number(fields.created_at_ms),
-        participants: rawParticipants.map((p: any) => {
-          const val = p.fields.value.fields;
-          return {
-            debtor: val.debtor,
-            amountOwedUsdc: Number(val.amount_owed) / 1e6,
-            requiresUpfrontEscrow: Boolean(val.requires_upfront_escrow),
-            isSettled: Boolean(val.is_settled),
-            settledAtMs: Number(val.settled_at_ms),
-          };
-        }),
-      };
-    });
-}
-
-/**
- * 3. Queries owned CooldownVault objects for the connected wallet via Tatum RPC
- */
-export async function fetchOwnedCooldownVaultsViaTatum(
-  walletAddress: string
-): Promise<OnChainCooldownVault[]> {
-  if (!PACKAGE_ID || PACKAGE_ID.includes("deployed")) return [];
-
-  const owned = await tatumSuiClient.getOwnedObjects({
-    owner: walletAddress,
-    filter: { StructType: `${PACKAGE_ID}::core::CooldownVault<${SUI_MAINNET_USDC_TYPE}>` },
-    options: { showContent: true },
-  });
-
-  return owned.data
-    .filter((o: any) => o.data?.content?.dataType === "moveObject")
-    .map((o: any) => {
-      const fields = (o.data!.content as any).fields;
-      return {
-        vaultId: o.data!.objectId,
-        amountUsdc: Number(fields.locked_balance) / 1e6,
-        unlockTimeMs: Number(fields.unlock_time_ms),
-        namespace: fields.trigger_memory_namespace,
-      };
-    });
-}
-
-/**
- * 4. Transaction Builder: Register User Profile + Real Friend Wallet Contacts
- */
-export function buildRegisterUserAndContactsTx(params: {
-  handle: string;
-  memwalAccountId: string;
-  safeFloorUsdc: number;
-  friends: Array<{ address: string; handle: string }>;
-}) {
-  const tx = new Transaction();
-
-  tx.moveCall({
-    target: `${PACKAGE_ID}::core::register_user`,
-    arguments: [
-      tx.object(REGISTRY_ID),
-      tx.pure.string(params.handle),
-      tx.pure.address(params.memwalAccountId),
-      tx.pure.u64(Math.round(params.safeFloorUsdc * 1e6)),
-      tx.object("0x6"),
-    ],
-  });
-
-  for (const friend of params.friends) {
-    if (friend.address && friend.address.startsWith("0x")) {
-      tx.moveCall({
-        target: `${PACKAGE_ID}::core::add_contact`,
-        arguments: [
-          tx.object(REGISTRY_ID),
-          tx.pure.address(friend.address),
-          tx.pure.string(friend.handle),
-        ],
+export async function fetchActiveGroupSplitsViaTatum(walletAddress: string): Promise<OnChainGroupSplit[]> {
+  const wallet = requireAddress(walletAddress);
+  const { packageId } = contractConfig();
+  const ids = new Set<string>();
+  let cursor: { txDigest: string; eventSeq: string } | null = null;
+  do {
+    const page = await tatumSuiClient.queryEvents({ query: { MoveEventType: packageId + '::core::SplitCreatedEvent' }, limit: 50, order: 'descending', cursor });
+    for (const e of page.data) { const id = (e.parsedJson as Fields | undefined)?.split_id; if (typeof id === 'string') ids.add(id); }
+    if (!page.hasNextPage) break;
+    if (!page.nextCursor || JSON.stringify(page.nextCursor) === JSON.stringify(cursor)) throw new Error('Split pagination did not advance.');
+    cursor = page.nextCursor;
+  } while (true);
+  const result: OnChainGroupSplit[] = [];
+  const all = [...ids];
+  for (let i = 0; i < all.length; i += 50) {
+    const objects = await tatumSuiClient.multiGetObjects({ ids: all.slice(i, i + 50), options: { showContent: true } });
+    for (const obj of objects) {
+      if (obj.error) throw new Error('Split read failed: ' + obj.error.code);
+      if (obj.data?.content?.dataType !== 'moveObject') throw new Error('Split content unavailable.');
+      const f = record(obj.data.content.fields);
+      const participants = entries(f.participants).map(p => {
+        const v = record(p.value);
+        return { debtor: String(v.debtor), amountOwedUsdc: amount(v.amount_owed), requiresUpfrontEscrow: v.requires_upfront_escrow === true,
+          isFunded: v.is_funded === true, isSettled: v.is_settled === true, settledAtMs: Number(v.settled_at_ms) };
       });
+      if (f.creator !== wallet && !participants.some(p => p.debtor === wallet)) continue;
+      result.push({ splitId: obj.data.objectId, creator: String(f.creator), title: String(f.title), totalBillUsdc: amount(f.total_bill_amount),
+        creatorShareUsdc: amount(f.creator_share), createdAtMs: Number(f.created_at_ms), fundingDeadlineMs: Number(f.funding_deadline_ms),
+        isActive: f.is_active === true, isCancelled: f.is_cancelled === true, pendingUpfront: Number(f.pending_upfront), participants });
     }
   }
-
+  return result;
+}
+export async function fetchOwnedCooldownVaultsViaTatum(walletAddress: string): Promise<OnChainCooldownVault[]> {
+  const wallet = requireAddress(walletAddress), { packageId } = contractConfig();
+  const result: OnChainCooldownVault[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = await tatumSuiClient.getOwnedObjects({ owner: wallet, filter: { StructType: packageId + '::core::CooldownVault<' + SUI_MAINNET_USDC_TYPE + '>' }, options: { showContent: true }, cursor });
+    for (const obj of page.data) {
+      if (obj.error || obj.data?.content?.dataType !== 'moveObject') throw new Error('Vault content unavailable.');
+      const f = record(obj.data.content.fields);
+      result.push({ vaultId: obj.data.objectId, amountUsdc: amount(f.locked_balance), unlockTimeMs: Number(f.unlock_time_ms), namespace: String(f.trigger_memory_namespace) });
+    }
+    if (!page.hasNextPage) break;
+    if (!page.nextCursor || page.nextCursor === cursor) throw new Error('Vault pagination did not advance.');
+    cursor = page.nextCursor;
+  } while (true);
+  return result;
+}
+export function buildRegisterUserAndContactsTx(p: { walletAddress: string; handle: string; memwalAccountId: string; safeFloorUsdc: number; friends: { address: string; handle: string }[]; existingContacts?: OnChainContact[]; }) {
+  const { packageId, registryId } = contractConfig(), wallet = requireAddress(p.walletAddress);
+  if (!p.handle.trim() || new TextEncoder().encode(p.handle).length > 64) throw new Error('Handle must contain 1–64 bytes.');
+  const addresses = p.friends.map(f => requireAddress(f.address, f.handle));
+  if (new Set([wallet, ...addresses]).size !== addresses.length + 1) throw new Error('Friends must have distinct wallets different from yours.');
+  const tx = new Transaction(); tx.setSender(wallet);
+  tx.moveCall({ target: packageId + '::core::register_user', arguments: [tx.object(registryId), tx.pure.string(p.handle.trim()), tx.pure.address(requireAddress(p.memwalAccountId, 'MemWal account')), tx.pure.u64(usdcToUnits(p.safeFloorUsdc)), tx.object('0x6')] });
+  for (const old of p.existingContacts || []) if (!addresses.includes(old.walletAddress)) tx.moveCall({ target: packageId + '::core::remove_contact', arguments: [tx.object(registryId), tx.pure.address(old.walletAddress)] });
+  for (const f of p.friends) tx.moveCall({ target: packageId + '::core::add_contact', arguments: [tx.object(registryId), tx.pure.address(f.address), tx.pure.string(f.handle)] });
   return tx;
 }
-
-/**
- * 5. Transaction Builder: Deploy Multi-Wallet GroupSplitEscrow on Sui Mainnet
- */
-export function buildCreateGroupSplitTx(params: {
-  coinType?: string;
-  title: string;
-  totalAmountUsdc: number;
-  shares: Array<{
-    debtorAddress: string;
-    amountUsdc: number;
-    requiresUpfrontEscrow: boolean;
-  }>;
-}) {
-  const tx = new Transaction();
-  const coinType = params.coinType || SUI_MAINNET_USDC_TYPE;
-
-  tx.moveCall({
-    target: `${PACKAGE_ID}::core::create_group_split`,
-    typeArguments: [coinType],
-    arguments: [
-      tx.pure.string(params.title),
-      tx.pure.u64(Math.round(params.totalAmountUsdc * 1e6)),
-      tx.pure.vector(
-        "address",
-        params.shares.map((s) => s.debtorAddress)
-      ),
-      tx.pure.vector(
-        "u64",
-        params.shares.map((s) => Math.round(s.amountUsdc * 1e6))
-      ),
-      tx.pure.vector(
-        "bool",
-        params.shares.map((s) => s.requiresUpfrontEscrow)
-      ),
-      tx.object("0x6"),
-    ],
-  });
-
+export function buildCreateGroupSplitTx(p: { walletAddress: string; title: string; totalAmountUsdc: number; shares: { debtorAddress: string; amountUsdc: number; requiresUpfrontEscrow: boolean }[]; }) {
+  const { packageId } = contractConfig(), wallet = requireAddress(p.walletAddress), total = positiveUsdc(p.totalAmountUsdc);
+  const addresses = p.shares.map(s => requireAddress(s.debtorAddress)), amounts = p.shares.map(s => positiveUsdc(s.amountUsdc));
+  if (!p.title.trim() || new TextEncoder().encode(p.title).length > 120) throw new Error('Split title must contain 1–120 bytes.');
+  if (!addresses.length || new Set([wallet, ...addresses]).size !== addresses.length + 1) throw new Error('Split wallets must be distinct.');
+  if (amounts.reduce((a, b) => a + b, 0n) >= total) throw new Error('The creator must retain a positive share of the total.');
+  const tx = new Transaction(); tx.setSender(wallet);
+  tx.moveCall({ target: packageId + '::core::create_group_split', typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [tx.pure.string(p.title.trim()), tx.pure.u64(total), tx.pure.vector('address', addresses), tx.pure.vector('u64', amounts), tx.pure.vector('bool', p.shares.map(s => s.requiresUpfrontEscrow)), tx.object('0x6')] });
   return tx;
 }
-
-/**
- * 6. Transaction Builder: Counterparty Settles Their Split Share with Real Mainnet USDC
- */
-export async function buildSettleSplitShareTx(params: {
-  payerAddress: string;
-  splitObjectId: string;
-  amountUsdc: number;
-  coinType?: string;
-}) {
-  const coinType = params.coinType || SUI_MAINNET_USDC_TYPE;
-  const requiredBaseUnits = BigInt(Math.round(params.amountUsdc * 1e6));
-
-  // Query payer's live USDC coin objects via Tatum RPC
-  const coins = await tatumSuiClient.getCoins({
-    owner: params.payerAddress,
-    coinType,
-  });
-
-  if (!coins.data.length) {
-    throw new Error(`No ${coinType} coins found in wallet ${params.payerAddress}`);
-  }
-
-  const tx = new Transaction();
-  const primaryCoin = tx.object(coins.data[0].coinObjectId);
-
-  if (coins.data.length > 1) {
-    tx.mergeCoins(
-      primaryCoin,
-      coins.data.slice(1).map((c: any) => tx.object(c.coinObjectId))
-    );
-  }
-
-  const [exactPaymentCoin] = tx.splitCoins(primaryCoin, [
-    tx.pure.u64(requiredBaseUnits),
-  ]);
-
-  tx.moveCall({
-    target: `${PACKAGE_ID}::core::settle_split_share`,
-    typeArguments: [coinType],
-    arguments: [
-      tx.object(params.splitObjectId),
-      exactPaymentCoin,
-      tx.object("0x6"),
-    ],
-  });
-
+async function paymentCoins(owner: string, required: bigint, tx: Transaction) {
+  requireAddress(owner);
+  const chosen: string[] = []; let total = 0n, cursor: string | null = null;
+  do {
+    const page = await tatumSuiClient.getCoins({ owner, coinType: SUI_MAINNET_USDC_TYPE, cursor, limit: 100 });
+    for (const c of page.data) { chosen.push(c.coinObjectId); total += BigInt(c.balance); if (total >= required) break; }
+    if (total >= required || !page.hasNextPage) break;
+    if (!page.nextCursor || page.nextCursor === cursor) throw new Error('Coin pagination did not advance.');
+    cursor = page.nextCursor;
+  } while (true);
+  if (total < required) throw new Error('Insufficient Circle USDC; the amount and any liquidity reserve must both be available.');
+  const primary = tx.object(chosen[0]);
+  for (let i = 1; i < chosen.length; i += 100) tx.mergeCoins(primary, chosen.slice(i, i + 100).map(id => tx.object(id)));
+  return primary;
+}
+export async function buildSettleSplitShareTx(p: { payerAddress: string; splitObjectId: string; amountUsdc: number; upfront?: boolean; }) {
+  const { packageId } = contractConfig(), units = positiveUsdc(p.amountUsdc);
+  const tx = new Transaction(); tx.setSender(requireAddress(p.payerAddress));
+  const coin = await paymentCoins(p.payerAddress, units, tx), [payment] = tx.splitCoins(coin, [tx.pure.u64(units)]);
+  tx.moveCall({ target: packageId + '::core::' + (p.upfront ? 'fund_split_share' : 'settle_split_share'), typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [tx.object(requireAddress(p.splitObjectId, 'Split ID')), payment, tx.object('0x6')] });
   return tx;
 }
-
-/**
- * 7. Transaction Builder: Sweep Idle USDC into 24-Hour Regret Cooldown Vault
- */
-export async function buildLockInCooldownVaultTx(params: {
-  ownerAddress: string;
-  amountUsdc: number;
-  lockDurationMs: number;
-  namespace: string;
-  coinType?: string;
-}) {
-  const coinType = params.coinType || SUI_MAINNET_USDC_TYPE;
-  const amountBaseUnits = BigInt(Math.round(params.amountUsdc * 1e6));
-
-  const coins = await tatumSuiClient.getCoins({
-    owner: params.ownerAddress,
-    coinType,
-  });
-
-  if (!coins.data.length) {
-    throw new Error(`Insufficient USDC in wallet ${params.ownerAddress}`);
-  }
-
-  const tx = new Transaction();
-  const primaryCoin = tx.object(coins.data[0].coinObjectId);
-
-  if (coins.data.length > 1) {
-    tx.mergeCoins(
-      primaryCoin,
-      coins.data.slice(1).map((c: any) => tx.object(c.coinObjectId))
-    );
-  }
-
-  const [sweepCoin] = tx.splitCoins(primaryCoin, [tx.pure.u64(amountBaseUnits)]);
-
-  tx.moveCall({
-    target: `${PACKAGE_ID}::core::lock_in_cooldown_vault`,
-    typeArguments: [coinType],
-    arguments: [
-      sweepCoin,
-      tx.pure.u64(params.lockDurationMs),
-      tx.pure.string(params.namespace),
-      tx.object("0x6"),
-    ],
-  });
-
+export function buildSplitActionTx(splitId: string, action: 'activate_group_split' | 'cancel_group_split' | 'refund_escrow') {
+  const { packageId } = contractConfig(), tx = new Transaction(), args = [tx.object(requireAddress(splitId))];
+  if (action !== 'cancel_group_split') args.push(tx.object('0x6'));
+  tx.moveCall({ target: packageId + '::core::' + action, typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: args }); return tx;
+}
+export async function buildLockInCooldownVaultTx(p: { ownerAddress: string; amountUsdc: number; }) {
+  const { packageId, registryId } = contractConfig(), units = positiveUsdc(p.amountUsdc);
+  const profile = await fetchFullUserStateViaTatum(p.ownerAddress);
+  if (!profile.isRegisteredOnChain) throw new Error('Register your profile before creating a vault.');
+  const tx = new Transaction(); tx.setSender(requireAddress(p.ownerAddress));
+  const reserve = await paymentCoins(p.ownerAddress, units + usdcToUnits(profile.safeFloorUsdc), tx);
+  const [funds] = tx.splitCoins(reserve, [tx.pure.u64(units)]);
+  tx.moveCall({ target: packageId + '::core::lock_in_cooldown_vault', typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [tx.object(registryId), funds, reserve, tx.pure.string('habit_regret'), tx.object('0x6')] });
   return tx;
 }
-
-/**
- * 8. Transaction Builder: Unlock Expired Cooldown Vault
- */
-export function buildUnlockCooldownVaultTx(params: {
-  vaultObjectId: string;
-  coinType?: string;
-}) {
-  const coinType = params.coinType || SUI_MAINNET_USDC_TYPE;
-  const tx = new Transaction();
-
-  tx.moveCall({
-    target: `${PACKAGE_ID}::core::unlock_cooldown_vault`,
-    typeArguments: [coinType],
-    arguments: [tx.object(params.vaultObjectId), tx.object("0x6")],
-  });
-
-  return tx;
+export function buildUnlockCooldownVaultTx(p: { vaultObjectId: string }) {
+  const { packageId } = contractConfig(), tx = new Transaction();
+  tx.moveCall({ target: packageId + '::core::unlock_cooldown_vault', typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [tx.object(requireAddress(p.vaultObjectId)), tx.object('0x6')] }); return tx;
+}
+export async function confirmTransaction(digest: string) {
+  const result = await tatumSuiClient.waitForTransaction({ digest, options: { showEffects: true, showEvents: true } });
+  if (result.effects?.status.status !== 'success') throw new Error(result.effects?.status.error || 'Transaction failed on chain.');
+  return result;
 }

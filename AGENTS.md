@@ -1,31 +1,17 @@
-# Project conventions
+# SolvencyLoop conventions
 
-Inside AI Builder, platform rules are provided separately and always take precedence — they
-cover the environment, credentials, networking, Tatum integration, design, verification, and
-the parts of the layout that are fixed by the platform (the `server/index.mjs` entry point,
-the inline Vite config, the wired-up styling). Do not restate or contradict them here.
+The application was migrated from an AI Builder Vite/Express export to the Next.js 15 App Router requested by the user. The old preview server is no longer active.
 
-<!-- <arch:exported-tooling-named-for-external-agents /> -->
-Outside AI Builder, the Tatum tooling travels with this repository: the `tatum` and
-`tatum-design` skills under `.claude/skills/`, and the `tatum-docs` MCP server in `.mcp.json`,
-which Claude Code reads; another agent takes the same server URL in its own MCP config. Load
-`tatum` before wiring blockchain data and `tatum-design` before writing UI. Those two skill
-directories and `.mcp.json` are managed by AI Builder and rewritten on every start, so keep
-your own skills under other names. Neither file holds a credential; the Tatum API key comes
-from the server's environment, never from source.
+- Runtime: Next.js 15, React 19, TypeScript, Tailwind with existing Tatum tokens.
+- Read `.claude/skills/tatum/SKILL.md` before changing blockchain integration and `.claude/skills/tatum-design/SKILL.md` before changing UI. These directories are managed; do not edit them.
+- No application database or durable local user-state store. Profiles, contacts, splits, and cooldown vaults live in the Sui Move package; behavioral memory uses MemWal/Walrus.
+- All Sui traffic must use the fixed authenticated Tatum Mainnet gateway. Browser calls use `/api/tatum-rpc`; server/CLI code uses the shared transport. Keep the pinned MemWal client-injection patch intact and retest it on upgrades.
+- Never expose delegate private keys, Tatum keys, or embedding API keys with `NEXT_PUBLIC_*`. Private values belong in ignored `.env.local` or host secrets.
+- Only real user-provided canonical Mainnet wallets and native Circle USDC. Test fixtures belong only in tests; no mock fallback data in runtime code.
+- Use bigint micro-USDC arithmetic. The Move contract is the authority for payment, escrow, authorization, reserve, and cooldown invariants.
+- Memory requests require a wallet personal-message signature over the action/payload, timestamp, nonce, and origin. Do not remove authentication or silently convert relayer failures into empty successful data.
+- Check `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, and both Move commands when their corresponding code changes. Stop dev before production builds; do not run both against the same .next directory.
+- Framework/CLI baseline: official Sui 1.72.2. Commit `Move.lock`; review framework/toolchain changes together.
+- No deployment, signing, or live financial transaction is implied by a request to build/test. The user requested deployment instructions and will configure credentials later.
 
-This file describes what *this* app is and the choices made while building it.
-
-## Stack
-
-**React + TypeScript + Vite + Express** in a single server process:
-- `server/index.mjs` — Express entry point with Vite in middleware mode (port 3000)
-- `server/routes/` — API routes (Express)
-- `src/` — React frontend (TypeScript, JSX)
-
-## Conventions
-
-- One Express process, one port (3000). No separate frontend dev server.
-- All blockchain logic on the server side. Fetch from `/api/*` in the frontend.
-<!-- <arch:no-durable-storage-in-preview /> -->
-- **No database, and no durable storage at runtime.** The project directory `/data` is mounted read-only in the preview container, so the running app cannot write the files it serves or persist anything there — no SQLite, no JSON files, no uploads. `/tmp` is writable, but it is ephemeral and local to this one container — wiped on every restart and never shared — so it does not give you persistence either. External databases are unreachable too: outbound traffic leaves only through an HTTP proxy, so a database wire protocol (MongoDB, Postgres) has no route out. Keep state in the browser or re-fetch it from Tatum. If the user asks for persistence, tell them it is not available in the preview rather than writing code that fails at runtime.
+See README.md for setup, deployment, and validation.
