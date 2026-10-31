@@ -1,6 +1,6 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519PublicKey } from '@mysten/sui/keypairs/ed25519';
-import { fromHex, toHex } from '@mysten/sui/utils';
+import { fromBase64, fromHex, toBase64, toHex } from '@mysten/sui/utils';
 import { memwalConfig, requireAddress } from './config';
 import { tatumSuiClient } from './tatum-rpc-client';
 
@@ -15,6 +15,18 @@ function fields(value: unknown): Fields {
   return r.fields && typeof r.fields === 'object' ? r.fields as Fields : r;
 }
 function shared(owner: unknown) { return !!owner && typeof owner === 'object' && 'Shared' in owner; }
+
+function delegateKeyBytes(value: unknown): Uint8Array {
+  // GraphQL Move JSON encodes vector<u8> as Base64; JSON-RPC used number arrays.
+  if (typeof value === 'string' && /^[A-Za-z0-9+/]{43}=$/.test(value)) {
+    const bytes = fromBase64(value);
+    if (bytes.length === 32 && toBase64(bytes) === value) return bytes;
+  }
+  if (Array.isArray(value) && value.length === 32 && value.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+    return Uint8Array.from(value);
+  }
+  throw new Error('Malformed MemWal delegate key.');
+}
 
 // Read the registry's owner -> ID table, rather than scanning events or accepting a browser-supplied ID.
 export async function fetchWalletMemWalAccount(walletAddress: string, client: AccountReader = tatumSuiClient): Promise<WalletMemWalAccount | null> {
@@ -34,9 +46,8 @@ export async function fetchWalletMemWalAccount(walletAddress: string, client: Ac
   if (typeof account.active !== 'boolean' || !Array.isArray(account.delegate_keys)) throw new Error('Malformed MemWal account permissions.');
   const expectedAddress = new Ed25519PublicKey(fromHex(config.delegatePublicKey)).toSuiAddress();
   const delegates = account.delegate_keys.map(value => {
-    const key = fields(value), bytes = key.public_key;
-    if (!Array.isArray(bytes) || bytes.length !== 32 || !bytes.every(v => Number.isInteger(v) && v >= 0 && v <= 255)) throw new Error('Malformed MemWal delegate key.');
-    return { publicKey: '0x' + toHex(new Uint8Array(bytes)), address: requireAddress(key.sui_address, 'Delegate address') };
+    const key = fields(value), bytes = delegateKeyBytes(key.public_key);
+    return { publicKey: '0x' + toHex(bytes), address: requireAddress(key.sui_address, 'Delegate address') };
   });
   return { accountId, owner: wallet, active: account.active && account.admin_quarantined !== true, delegateCount: delegates.length,
     delegateAuthorized: delegates.some(key => key.publicKey === config.delegatePublicKey && key.address === expectedAddress) };

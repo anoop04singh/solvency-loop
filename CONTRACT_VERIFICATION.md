@@ -1,6 +1,6 @@
 # Contract and application alignment
 
-Local review updated 2026-10-30. This records implementation checks and local tests, not an external audit or a claim that a package has been deployed.
+Local review updated 2026-10-31. This records implementation checks and local tests, not an external audit. The user has since published the factory package; publication metadata is recorded in `move/solvency_loop/Published.toml`. See [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) for current live read-only checks and remaining wallet-approved validation.
 
 ## Mandatory MemWal membership
 
@@ -57,4 +57,4 @@ Local Move tests include the original escrow/payment/cooldown checks plus atomic
 
 The MemWal public relayer `/config` and the official repository's app configuration agreed on Mainnet package/registry IDs on 2026-10-30. The vendored source and license are documented in `move/vendor/memwal/README.md`. Test-only fixtures are absent from production builds.
 
-Still pending: on-chain dependency bytecode verification, publication dry-run, publication, real wallet onboarding/delegation and real USDC/MemWal writes. At the user's request, README.md now uses the installed Sui CLI against Sui's direct Mainnet endpoint for source verification and deployment, without a bridge or Tatum API key. Run dependency verification **before** publication, retain dependency verification during publish, then verify the published source. Complete the app's Tatum/MemWal configuration and run `npm run verify:mainnet` through the app's authenticated Tatum transport afterward. Do not replace a failed verification with a skip flag. Mainnet compatibility is confirmed only when the live deployment checks and application readiness checks succeed.
+The operator has published the current package and configured the application. Live infrastructure checks now validate the deployed interface, registry, profile layout, native USDC and MemWal configuration through authenticated Tatum GraphQL. Real wallet onboarding/delegation and real USDC/MemWal writes remain pending. CLI dependency bytecode/source verification is a separate operator check; it is not implied by the application's ABI checks. At the user's request, README.md uses the installed Sui CLI against Sui's direct Mainnet endpoint for source verification and deployment, without a bridge or Tatum API key. Keep dependency verification enabled and do not replace failed verification with a skip flag. After onboarding, run `npm run verify:mainnet` through the application's authenticated Tatum transport. The current status and limits are recorded in [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md).

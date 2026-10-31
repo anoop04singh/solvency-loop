@@ -4,6 +4,10 @@ A Next.js 15 App Router application for Sui Mainnet profiles, contact graphs, Ci
 
 **Current state:** the object-factory contract is published on Sui Mainnet (see `move/solvency_loop/Published.toml`). The application provides wallet-owned onboarding, personal contacts, real USDC expenses, payment history, cooldown savings and user-authored memory. No sample contacts, preset bills or memory-seeding action are enabled. See `PRODUCTION_READINESS.md` for verification evidence and remaining wallet-approved checks.
 
+The public landing page at `/` explains the application with original SVG illustrations and Framer Motion interactions. Choose **Open app** to enter `/app`. Existing `/?split=...` bill links redirect to the workspace; new links use `/app?split=...`. Wallet providers are scoped to the workspace so browsing the landing page does not initialize wallet or chain requests.
+
+The workspace uses locally bundled Vanta Fog with outcome colors: green for completed actions, yellow for processing/pending confirmation and red for errors or stale account state. It reads the existing operation state and never confirms or authorizes payments. Pause the background using its status pill. Reduced-motion/data-saver preferences, unavailable WebGL and context loss use a static palette; hidden tabs release their renderer. See the [Vanta lifecycle documentation](https://github.com/tengbao/vanta#cleanup) and [Motion accessibility guidance](https://motion.dev/docs/react-accessibility). Presentation styles are local overrides; generated Tatum tokens remain untouched.
+
 **Access policy:** a wallet-owned MemWal account is mandatory. Users create or reuse that account, authorize the app delegate, then register their profile before the financial dashboard opens. The contract accepts an actual MemWalAccount object and checks its owner and profile link for financial actions. Payments and vaults use only native Circle USDC on Sui Mainnet. SUI is needed for network gas. There is no guest payment, off-chain settlement, card/fiat payment, alternative token, or MemWal-free payment path. Existing-fund recovery still requires the user's genuine linked MemWal account, but works after memory revocation/freezing to avoid trapping funds.
 
 ## Object factory structure
@@ -24,7 +28,7 @@ The browser and memory API discover the ID through the directory, then verify th
 
 This removes shared-registry writes from profile/contact edits. Registration still shares a directory write, and participants updating the same bill still share that bill's object. MemWal and bill transactions still involve shared objects; this is not a promise of consensus-free payments or measured gas savings.
 
-This layout is intended for the application's first deployment. Publish the current package using the steps below and configure its package/registry IDs together. An older package containing nested profiles is not compatible with these builders; upgrading an already deployed older layout would require a separate migration plan.
+The current deployment uses this object layout. For a new deployment, publish the package using the steps below and configure its package/registry IDs together. An older package containing nested profiles is not compatible with these builders; upgrading an already deployed older layout would require a separate migration plan.
 
 ## Local setup
 
@@ -118,9 +122,6 @@ NEXT_PUBLIC_MEMWAL_AGENT_ID=0x...delegate_public_key_hex
 NEXT_PUBLIC_MEMWAL_PACKAGE_ID=0xe7c16fbea0560e7057e2bf7422feaa4fb313749fc69c9e9092fac7a33b81d7f5
 NEXT_PUBLIC_MEMWAL_REGISTRY_ID=0x8bf82c9e09e36b8d1c38298f68b7cb68e7b8762887e7592add9986d5e9cf199f
 MEMWAL_SERVER_URL=https://relayer.memory.walrus.xyz
-NEXT_PUBLIC_ALEX_SUI_WALLET=0x...real_wallet
-NEXT_PUBLIC_PRIYA_SUI_WALLET=0x...real_wallet
-NEXT_PUBLIC_SAM_SUI_WALLET=0x...real_wallet
 VERIFY_WALLET_ADDRESS=0x...your_connected_wallet
 ```
 
@@ -132,7 +133,7 @@ Before deployment you can confirm the public protocol IDs without credentials:
 Invoke-RestMethod https://relayer.memory.walrus.xyz/config | Select-Object network, packageId, registryId
 ```
 
-Use only the protocol IDs from that response. All application/CLI Sui traffic stays on Tatum; do not copy its alternative RPC URLs into the application. If the protocol package changes, review the vendored contract, Mainnet dependency binding, SDK compatibility and environment together before deployment.
+Use only the protocol IDs from that response. Application traffic stays on the authenticated Tatum gateway; manual Sui CLI deployment and source verification use direct Sui Mainnet. Do not copy alternative RPC URLs into the application. If the protocol package changes, review the vendored contract, Mainnet dependency binding, SDK compatibility and environment together before deployment.
 
 Environment checklist:
 
@@ -169,26 +170,13 @@ The default memory flow uses the relayer and does not need an OpenAI key in the 
 
 Both MemWal factories inject the Tatum client. Pinned MemWal 0.1.11 does not natively accept a client in relayer mode; the small, version-checked `scripts/patch-memwal.mjs` postinstall patch adds that injection and disables its public-node fallbacks. Do not use `npm ci --ignore-scripts`. SDK upgrades must review/retest this patch.
 
-## Use and verify the complete flow
+## Use and verify the application
 
-1. Restart `npm run dev` and connect your Mainnet wallet. The app reads the MemWal registry through Tatum and reuses any existing account. If none exists, choose **Create my memory account** and approve the transaction. Each wallet can create one account per protocol registry. Lookup failures block creation instead of being treated as missing accounts. Account creation and delegate changes spend SUI gas.
-2. Review the access explanation and choose **Authorize app memory access**. This owner-approved transaction registers the app's public delegate key on your account. It permits account-wide reads/writes, including memories created by other apps. Enter your handle and liquidity floor, then save the profile to link your account on Sui. First registration creates your owned profile and optional contacts in one transaction; subsequent saves update that same profile without writing the global registry. Contacts are optional during onboarding; enter all three real friend wallets before creating a group bill or storing demo rules. The financial dashboard opens only after profile ownership, active delegate access and profile linking are confirmed. Registration passes a genuine MemWal object to the contract, rather than a user-entered ID. Existing shared-account memories are not automatically copied or deleted.
-3. Optionally store the twelve **demo preferences** on Walrus. They are explicitly labelled examples, not fabricated past spending. The app waits for all twelve actual blob commits. Recall your memories with a personal-message signature before applying their rules.
-4. Create a bill. Food and eligible drinks are allocated in exact micro-USDC, including the creator's share. Alex's demo rule excludes alcohol; Sam's demo rule requires upfront funding only when his share is **strictly above 40 USDC**. Confirmed settlement timing can also generate an upfront rule when the observed average lag exceeds seven days.
-5. A split without upfront shares starts active. A split with upfront shares remains pending: switch to each flagged debtor's wallet and fund its exact share; switch back to the creator to activate. Only then are escrow funds released to the creator and standard settlement enabled.
-6. A creator can cancel a pending split. Funded participants can refund after cancellation, or independently after the 24-hour funding deadline. Cancelled/expired splits cannot activate. Settlements reject underpayment, overpayment, and duplicate payment.
-7. Every payer must complete MemWal onboarding before funding or settling. After a successful settlement/activation, the app verifies package-emitted on-chain events and writes timing observations only to the signing wallet's account. Recipients choose **Import my confirmed settlements** to learn from their own history. Each signed request scans five settlement events and returns a cursor for the next page; continue until complete. Cursor progress is held only in the current browser page. Import verifies successful transactions, event identities, wallet participation and exact split types; stable event identifiers prevent duplicate observations on retries. A relayer failure after payment remains a memory failure: use the memory-only retry button instead of paying twice. It never enables a different payment method or bypasses onboarding.
-8. A registered wallet can lock USDC for exactly 24 hours. The builder selects sufficient real USDC coins across pages. The contract consumes and transfers a reserve coin back to the owner, enforcing the registered floor on chain. The owner can unlock only after maturity. The vault cannot be transferred to another wallet.
-9. Record a reflection, analyze notes into facts, recall memories, or restore a namespace's index. These operations require short-lived signatures over the exact action/payload and web origin. Before creating any SDK client, the server verifies the signing wallet's live registry mapping, account type, owner, active state, delegate grant and profile link. It ignores caller-supplied account IDs. Restore reports partial recovery or permanent errors honestly.
-10. Choose **Revoke app memory access** to remove the delegate through your wallet. The app checks the live grant on future requests and clears recalled data when revocation is confirmed or detected. The financial dashboard closes until authorization is restored. Forward revocation does not retract older keys or plaintext already obtained by a delegate; protecting historical ciphertext requires re-encryption. Frozen/quarantined accounts must be managed in MemWal before new activity can resume. A limited recovery panel lets existing members cancel pending splits, refund eligible escrow and unlock matured vaults. These actions still verify the actual owned MemWal account and profile link, and return existing USDC rather than making new payments.
+Follow [USER_GUIDE.md](./USER_GUIDE.md) for real onboarding, personal contacts, expenses, memory and savings. The demo seeding action and named-contact defaults have been removed. No stored memories are required to complete onboarding.
 
-Run the read-only readiness check once the profile exists and at least ten unique memories are recallable:
+The application uses the supported GraphQL path on the fixed Tatum Mainnet gateway. Browser requests still use /api/tatum-rpc. See [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) for the reproduced 404 cause, request pacing, Retry-After handling and verification evidence.
 
-```powershell
-npm.cmd run verify:mainnet
-```
-
-It discovers `VERIFY_WALLET_ADDRESS`'s profile and MemWal account through their directories and checks their owners, active delegate grant and matching link. It also requires authenticated Mainnet chain/checkpoint access, the shared registry's exact type, the owned profile's fields and non-transferable abilities, every current function parameter's type and mutability (including UserProfile and MemWalAccount references), Circle USDC metadata, delegate identity, matching relayer Mainnet configuration, relayer health, and at least ten distinct readable Walrus blobs across that user's three namespaces. It rejects both the address-only scaffold and the earlier registry-based profile/payment interface. It does not seed data or submit a transaction. Deploy the current object-factory package and configure its package/registry IDs together.
+Run npm.cmd run verify:infrastructure before onboarding to check the live deployment and relayer without signing or writing. After onboarding, set VERIFY_WALLET_ADDRESS and run npm.cmd run verify:mainnet to check ownership and memory access. An empty memory account is valid.
 
 ## Validation and production
 
@@ -203,7 +191,9 @@ npm.cmd run build
 npm.cmd start
 ```
 
-Use a single running dev/build/start process per checkout; stop the development server before rebuilding production output. Both dev and production servers bind to loopback locally. A hosted deployment should supply private environment variables through its host's secret settings, set APP_ORIGIN to its public HTTPS origin behind a reverse proxy, and rebuild after changing public configuration. Memory seeding can wait for up to twelve relayer commits; the memory route allows up to 600 seconds. Use a host supporting that duration, or commit/recall individual memories instead.
+For browser regression checks, leave a local preview running and run `npm.cmd run test:ui` in another terminal. The suite uses the installed Google Chrome in headless mode and covers the landing interactions, mobile widths, legacy bill links, mandatory onboarding, drawer, Vanta cleanup/context loss and reduced motion. `PLAYWRIGHT_BASE_URL` optionally selects another local preview URL. It does not connect a wallet, sign or submit transactions.
+
+Use a single running dev/build/start process per checkout; stop the development server before rebuilding production output. Both dev and production servers bind to loopback locally. A hosted deployment should supply private environment variables through its host's secret settings, set APP_ORIGIN to its public HTTPS origin behind a reverse proxy, and rebuild after changing public configuration. Memory operations may wait for relayer commits; the memory route allows up to 600 seconds. Use a host supporting the required duration.
 
 Local automated validation covers signature tampering/expiry/origin isolation, RPC routing, exact amounts, rule application, memory commit/error handling, and Move scenarios for funding, cancellation/refunds, unauthorized actions, payment validation, and cooldown/floor enforcement. Live wallet signatures, Mainnet contract execution, and real relayer writes require your post-deployment validation and are not claimed to have run locally.
 

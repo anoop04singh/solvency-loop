@@ -7,6 +7,8 @@ dist/
 .env.*
 !.env.example
 .next/
+test-results/
+playwright-report/
 *.tsbuildinfo
 move/**/build/
 # Platform markers and harness internals — not the user's source. (The bridge's
