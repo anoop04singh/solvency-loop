@@ -28,7 +28,8 @@ test('readiness verifies chain and object types, and counts unique readable blob
   MemWal.prototype.health = async () => ({ status: 'ok', version: 'test', write_ready: true, mode: 'production' });
   MemWal.prototype.recall = (async () => ({ results: Array.from({ length: count }, (_, i) => ({ blob_id: 'unique-' + i, text: 'readable memory', distance: 0 })), total: count })) as typeof recall;
   try {
-    await assert.rejects(verifyMainnetReadiness(() => {}), /found 9/);
+    assert.equal((await verifyMainnetReadiness(() => {})).memoryCount, 9);
+    count = 0; assert.equal((await verifyMainnetReadiness(() => {})).memoryCount, 0);
     count = 10; assert.equal((await verifyMainnetReadiness(() => {})).memoryCount, 10); // 30 results but ten unique blobs.
     legacyInterface = true; await assert.rejects(verifyMainnetReadiness(() => {}), /MemWalAccount/); legacyInterface = false;
     transferableProfile = true; await assert.rejects(verifyMainnetReadiness(() => {}), /non-transferable/); transferableProfile = false;

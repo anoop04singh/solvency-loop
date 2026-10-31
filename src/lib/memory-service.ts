@@ -16,23 +16,6 @@ export interface MemoryDependencies {
 }
 const defaults: MemoryDependencies = { client: createScopedMemWalClient, state: fetchFullUserStateViaTatum,
   access: requireWalletMemoryAccess, transaction: p => tatumSuiClient.getTransactionBlock(p), object: p => tatumSuiClient.getObject(p), events: p => tatumSuiClient.queryEvents(p) };
-export function seedFacts(p: MemoryPayload): { category: SolvencyNamespaceCategory; text: string }[] {
-  const f = p.friendWallets!;
-  return [
-    { category: 'social_split_trust', text: 'Demo rule: Alex avoids alcohol. SOLVENCY_RULE_V1 ' + JSON.stringify({ subject: f.alex.toLowerCase(), excludeAlcohol: true }) },
-    { category: 'social_split_trust', text: 'Demo rule: Sam must fund shares above 40 USDC upfront. SOLVENCY_RULE_V1 ' + JSON.stringify({ subject: f.sam.toLowerCase(), upfrontAboveUsdc: 40 }) },
-    { category: 'social_split_trust', text: 'Demo preference: use equal food shares unless a receipt says otherwise.' },
-    { category: 'social_split_trust', text: 'Demo preference: shared utility costs may be proposed at 50/30/20; confirm before creating a bill.' },
-    { category: 'social_split_trust', text: 'Demo note: settlement speed must be learned from confirmed on-chain events, not assumed for Priya (' + f.priya + ').' },
-    { category: 'habit_regret', text: 'Demo reflection: pause late-night food delivery purchases for review.' },
-    { category: 'habit_regret', text: 'Demo preference: review electronics purchases above 80 USDC after 24 hours.' },
-    { category: 'habit_regret', text: 'Demo preference: review SaaS trial renewals 48 hours before billing.' },
-    { category: 'habit_regret', text: 'Demo reflection: productive weekend coworking expenses may be worthwhile.' },
-    { category: 'cashflow_elasticity', text: 'Demo preference: preserve the liquidity floor recorded in my Sui profile.' },
-    { category: 'cashflow_elasticity', text: 'Demo preference: reduce discretionary sweeps near month end.' },
-    { category: 'cashflow_elasticity', text: 'Demo preference: reassess daily spending after income arrives.' },
-  ];
-}
 export async function executeMemoryRequest(p: MemoryPayload, nonce: string, deps?: MemoryDependencies) {
   if (deps) return executeRequestWithDeps(p, nonce, deps);
   const pool = new Map<string, MemoryClient>();
@@ -54,13 +37,19 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
   const anchor = { checkpoint: state.latestCheckpoint, gateway: 'https://sui-mainnet.gateway.tatum.io', usdcBalance: state.usdcBalance };
   if (p.action === 'recall_all') {
     const results = await Promise.all(CATEGORIES.map(async cat => {
-      const recalled = await scopedClient(cat).recall({ query: p.query || 'SOLVENCY_RULE_V1 SOLVENCY_SETTLEMENT_V1 alcohol escrow settlement liquidity regret preferences', topK: 100 });
+      const recalled = await scopedClient(cat).recall({ query: p.query || 'SOLVENCY_RULE_V1 SOLVENCY_SETTLEMENT_V1 payment preferences settlement liquidity reflections', topK: 100 });
       if (recalled.dropped_count) throw new Error('Some Walrus memories could not be decrypted. Restore the namespace before relying on its rules.');
       return recalled.results.map(m => ({ ...m, namespace: getWalletNamespace(wallet, cat), category: cat }));
     }));
     return { memories: results.flat(), tatumAnchor: anchor };
   }
   const client = scopedClient(category);
+  if (p.action === 'save_preference') {
+    if (!state.contacts.some(c => c.walletAddress === p.subjectWallet)) throw new Error('Save this person as a contact before setting a payment preference.');
+    const text = 'My payment preference. SOLVENCY_RULE_V1 ' + JSON.stringify({ subject: p.subjectWallet, upfrontAboveUsdc: p.upfrontAboveUsdc, updatedAtMs: Date.now() });
+    const committed = await scopedClient('social_split_trust').rememberAndWait(text, { timeoutMs: 60_000, idempotencyKey: 'preference:' + nonce });
+    return { status: 'COMMITTED', committed, tatumAnchor: anchor };
+  }
   if (p.action === 'remember') {
     const committed = await client.rememberAndWait(p.text + ' | [Tatum checkpoint #' + state.latestCheckpoint + ']', { timeoutMs: 60_000, idempotencyKey: 'reflection:' + nonce });
     return { status: 'COMMITTED', committed, tatumAnchor: anchor };
@@ -73,17 +62,6 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     const result = await client.restore(getWalletNamespace(wallet, category), 20);
     if (result.failed) throw new Error(result.failed + ' memories could not be restored; no complete recovery is claimed.');
     return { status: result.truncated ? 'MORE_TO_RESTORE' : 'RESTORED', result, tatumAnchor: anchor };
-  }
-  if (p.action === 'seed_12_mainnet') {
-    const dataset = seedFacts(p), blobs: string[] = [];
-    for (let i = 0; i < dataset.length; i += 3) {
-      const batch = await Promise.all(dataset.slice(i, i + 3).map(async (item, offset) => {
-        const result = await scopedClient(item.category).rememberAndWait(item.text + ' | [Tatum checkpoint #' + state.latestCheckpoint + ']', { timeoutMs: 90_000, idempotencyKey: 'demo:' + nonce + ':' + (i + offset) });
-        return result.blob_id;
-      }));
-      blobs.push(...batch);
-    }
-    return { status: 'COMMITTED', count: blobs.length, blobIds: blobs, tatumAnchor: anchor };
   }
   if (p.action === 'settlement' || p.action === 'sync_settlements') {
     const { packageId } = contractConfig();

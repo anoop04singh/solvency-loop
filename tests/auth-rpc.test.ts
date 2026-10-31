@@ -4,7 +4,8 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { MemWal } from '@mysten-incubation/memwal';
 import { memorySigningMessage, type MemoryEnvelope } from '../src/lib/memory-protocol';
 import { verifyMemoryEnvelope } from '../src/lib/memory-auth';
-import { proxyTatumRpc, validateRpcPayload } from '../src/lib/rpc-proxy';
+import { validateRpcPayload } from '../src/lib/rpc-proxy';
+import { createTatumRequester } from '../src/lib/tatum-request';
 import { createTatumSuiClient, tatumSuiClient } from '../src/lib/tatum-rpc-client';
 import { verifyMainnetReadiness } from '../scripts/verify-mainnet-readiness';
 const origin = 'http://localhost:3000', key = Ed25519Keypair.generate();
@@ -27,13 +28,14 @@ test('RPC proxy enforces the fixed Mainnet gateway and server-side authenticatio
   try {
     let called = false;
     const fake = (async (url: RequestInfo | URL, init?: RequestInit) => {
-      called = true; assert.equal(url, 'https://sui-mainnet.gateway.tatum.io');
+      called = true; assert.equal(url, 'https://sui-mainnet.gateway.tatum.io/graphql');
       assert.equal(new Headers(init?.headers).get('x-api-key'), 'test-server-only-key');
-      return Response.json({ jsonrpc: '2.0', id: 1, result: '123' });
+      return Response.json({ data: { checkpoint: { sequenceNumber: 123 } } });
     }) as typeof fetch;
-    await proxyTatumRpc({ jsonrpc: '2.0', id: 1, method: 'sui_getLatestCheckpointSequenceNumber', params: [] }, fake);
+    const request = createTatumRequester(fake, {intervalMs:0});
+    await request({ query: 'query { checkpoint { sequenceNumber } }' });
     assert.ok(called); called = false; delete process.env.TATUM_API_KEY;
-    await assert.rejects(proxyTatumRpc({ jsonrpc: '2.0', id: 1, method: 'sui_getLatestCheckpointSequenceNumber', params: [] }, fake)); assert.equal(called, false);
+    await assert.rejects(request({ query: 'query { checkpoint { sequenceNumber } }' })); assert.equal(called, false);
     assert.throws(() => validateRpcPayload([])); assert.throws(() => validateRpcPayload({ jsonrpc: '2.0', method: 'unsafe_transferObject', params: [] }));
   } finally { if (old === undefined) delete process.env.TATUM_API_KEY; else process.env.TATUM_API_KEY = old; }
 });
@@ -41,7 +43,7 @@ test('shared Sui client transport cannot fall back to an environment override', 
   const oldFetch = globalThis.fetch, oldKey = process.env.TATUM_API_KEY;
   process.env.TATUM_API_KEY = 'transport-sentinel';
   try {
-    globalThis.fetch = (async (url, init) => { assert.equal(url, 'https://sui-mainnet.gateway.tatum.io'); assert.equal(new Headers(init?.headers).get('x-api-key'), 'transport-sentinel'); return Response.json({ jsonrpc: '2.0', id: 1, result: '9' }); }) as typeof fetch;
+    globalThis.fetch = (async (url, init) => { assert.equal(url, 'https://sui-mainnet.gateway.tatum.io/graphql'); assert.equal(new Headers(init?.headers).get('x-api-key'), 'transport-sentinel'); return Response.json({ data: { checkpoint: { sequenceNumber: 9 } } }); }) as typeof fetch;
     assert.equal(await createTatumSuiClient().getLatestCheckpointSequenceNumber(), '9');
   } finally { globalThis.fetch = oldFetch; if (oldKey === undefined) delete process.env.TATUM_API_KEY; else process.env.TATUM_API_KEY = oldKey; }
 });

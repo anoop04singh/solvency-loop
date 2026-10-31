@@ -1,3 +1,5 @@
+import type { SuiObjectResponse } from '@mysten/sui/jsonRpc';
+import type { SettlementCursor } from './memory-protocol';
 import { Transaction } from '@mysten/sui/transactions';
 import { normalizeStructTag } from '@mysten/sui/utils';
 import { tatumSuiClient } from './tatum-rpc-client';
@@ -58,28 +60,15 @@ export async function fetchFullUserStateViaTatum(walletAddress: string): Promise
   ]);
   const base = { wallet, usdcBalance: unitsToUsdc(balances.find(b => b.coinType === SUI_MAINNET_USDC_TYPE)?.totalBalance || '0'),
     suiBalance: Number(balances.find(b => b.coinType.endsWith('::sui::SUI'))?.totalBalance || '0') / 1e9, latestCheckpoint: checkpoint };
-  if (!profile) return { ...base, profileId: '', handle: '', memwalAccountId: '', safeFloorUsdc: 300, contacts: [], isRegisteredOnChain: false };
+  if (!profile) return { ...base, profileId: '', handle: '', memwalAccountId: '', safeFloorUsdc: 0, contacts: [], isRegisteredOnChain: false };
   return { ...base, ...profile, isRegisteredOnChain: true };
 }
-export async function fetchActiveGroupSplitsViaTatum(walletAddress: string): Promise<OnChainGroupSplit[]> {
-  const wallet = requireAddress(walletAddress);
-  const { packageId } = contractConfig();
-  const ids = new Set<string>();
-  let cursor: { txDigest: string; eventSeq: string } | null = null;
-  do {
-    const page = await tatumSuiClient.queryEvents({ query: { MoveEventType: packageId + '::core::SplitCreatedEvent' }, limit: 50, order: 'descending', cursor });
-    for (const e of page.data) { const id = (e.parsedJson as Fields | undefined)?.split_id; if (typeof id === 'string') ids.add(id); }
-    if (!page.hasNextPage) break;
-    if (!page.nextCursor || JSON.stringify(page.nextCursor) === JSON.stringify(cursor)) throw new Error('Split pagination did not advance.');
-    cursor = page.nextCursor;
-  } while (true);
+function decodeSplits(objects: SuiObjectResponse[], wallet: string): OnChainGroupSplit[] {
   const result: OnChainGroupSplit[] = [];
-  const all = [...ids];
-  for (let i = 0; i < all.length; i += 50) {
-    const objects = await tatumSuiClient.multiGetObjects({ ids: all.slice(i, i + 50), options: { showContent: true } });
     for (const obj of objects) {
       if (obj.error) throw new Error('Split read failed: ' + obj.error.code);
       if (obj.data?.content?.dataType !== 'moveObject') throw new Error('Split content unavailable.');
+      if (obj.data.content.type !== contractConfig().packageId + '::core::GroupSplitEscrow<' + SUI_MAINNET_USDC_TYPE + '>') throw new Error('Bill is not a native USDC expense from this application.');
       const f = record(obj.data.content.fields);
       const participants = entries(f.participants).map(p => {
         const v = record(p.value);
@@ -91,8 +80,26 @@ export async function fetchActiveGroupSplitsViaTatum(walletAddress: string): Pro
         creatorShareUsdc: amount(f.creator_share), createdAtMs: Number(f.created_at_ms), fundingDeadlineMs: Number(f.funding_deadline_ms),
         isActive: f.is_active === true, isCancelled: f.is_cancelled === true, pendingUpfront: Number(f.pending_upfront), participants });
     }
-  }
   return result;
+}
+export async function fetchGroupSplitPageViaTatum(walletAddress: string, cursor?: SettlementCursor) {
+ const wallet=requireAddress(walletAddress),{packageId}=contractConfig();
+ const page=await tatumSuiClient.queryEvents({query:{MoveEventType:packageId+'::core::SplitCreatedEvent'},limit:50,order:'descending',cursor});
+ if(page.hasNextPage&&(!page.nextCursor||JSON.stringify(page.nextCursor)===JSON.stringify(cursor)))throw new Error('Split pagination did not advance.');
+ const ids=[...new Set(page.data.map(e=>(e.parsedJson as Fields)?.split_id).filter((v):v is string=>typeof v==='string'))];
+ const result:OnChainGroupSplit[]=[];
+ for(let i=0;i<ids.length;i+=40)result.push(...decodeSplits(await tatumSuiClient.multiGetObjects({ids:ids.slice(i,i+40),options:{showContent:true}}),wallet));
+ return {splits:result,nextCursor:page.hasNextPage?page.nextCursor as SettlementCursor:null};
+}
+export async function fetchGroupSplitByIdViaTatum(walletAddress:string, splitId:string) {
+ const result=decodeSplits([await tatumSuiClient.getObject({id:requireAddress(splitId,'Bill ID'),options:{showContent:true}})],requireAddress(walletAddress));
+ if(!result.length)throw new Error('Your wallet is not a participant or the creator of this bill.');
+ return result[0];
+}
+export async function fetchActiveGroupSplitsViaTatum(walletAddress:string):Promise<OnChainGroupSplit[]> {
+ let cursor:SettlementCursor|null=null;const result:OnChainGroupSplit[]=[];
+ do {const page=await fetchGroupSplitPageViaTatum(walletAddress,cursor||undefined);result.push(...page.splits);cursor=page.nextCursor;}while(cursor);
+ return result;
 }
 export async function fetchOwnedCooldownVaultsViaTatum(walletAddress: string): Promise<OnChainCooldownVault[]> {
   const wallet = requireAddress(walletAddress), { packageId } = contractConfig();
@@ -140,7 +147,7 @@ export async function buildCreateGroupSplitTx(p: { walletAddress: string; title:
   const { packageId } = contractConfig(), wallet = requireAddress(p.walletAddress), total = positiveUsdc(p.totalAmountUsdc);
   const addresses = p.shares.map(s => requireAddress(s.debtorAddress)), amounts = p.shares.map(s => positiveUsdc(s.amountUsdc));
   if (!p.title.trim() || new TextEncoder().encode(p.title).length > 120) throw new Error('Split title must contain 1–120 bytes.');
-  if (!addresses.length || new Set([wallet, ...addresses]).size !== addresses.length + 1) throw new Error('Split wallets must be distinct.');
+  if (!addresses.length || addresses.length > 64 || new Set([wallet, ...addresses]).size !== addresses.length + 1) throw new Error('Split wallets must be distinct.');
   if (amounts.reduce((a, b) => a + b, 0n) >= total) throw new Error('The creator must retain a positive share of the total.');
   const access = await transactionAccess(wallet);
   const tx = new Transaction(); tx.setSender(wallet);

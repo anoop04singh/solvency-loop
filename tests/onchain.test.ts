@@ -27,7 +27,7 @@ test('split history and owned vault readers continue through every page', async 
   let eventPages = 0, vaultPages = 0;
   Object.assign(tatumSuiClient, {
     queryEvents: async ({ cursor }: { cursor: unknown }) => { eventPages++; return { data: [{ parsedJson: { split_id: cursor ? a(12) : a(11) } }], hasNextPage: !cursor, nextCursor: cursor ? null : { txDigest: 'next', eventSeq: '1' } }; },
-    multiGetObjects: async ({ ids }: { ids: string[] }) => ids.map(id => ({ data: { objectId: id, content: { dataType: 'moveObject', fields: { creator: a(5), title: 'bill', total_bill_amount: '4000000', creator_share: '1000000', created_at_ms: '1', funding_deadline_ms: '100', is_active: true, is_cancelled: false, pending_upfront: '0', participants: { fields: { contents: [] } } } } } })),
+    multiGetObjects: async ({ ids }: { ids: string[] }) => ids.map(id => ({ data: { objectId: id, content: { dataType: 'moveObject', type: a(1) + '::core::GroupSplitEscrow<' + SUI_MAINNET_USDC_TYPE + '>', fields: { creator: a(5), title: 'bill', total_bill_amount: '4000000', creator_share: '1000000', created_at_ms: '1', funding_deadline_ms: '100', is_active: true, is_cancelled: false, pending_upfront: '0', participants: { fields: { contents: [] } } } } } })),
     getOwnedObjects: async ({ cursor }: { cursor: unknown }) => { vaultPages++; return { data: [{ data: { objectId: cursor ? a(21) : a(20), content: { dataType: 'moveObject', fields: { locked_balance: cursor ? { fields: { value: '2000000' } } : '1000000', unlock_time_ms: '100', trigger_memory_namespace: 'habit_regret' } } } }], hasNextPage: !cursor, nextCursor: cursor ? null : 'next' }; },
   });
   try {

@@ -2,7 +2,7 @@
 
 A Next.js 15 App Router application for Sui Mainnet profiles, contact graphs, Circle USDC bill splits, upfront escrow, 24-hour cooldown vaults, and user-owned MemWal accounts with wallet-scoped Walrus memory. There is no application database or local user-state store.
 
-**Current state:** the application runs locally and has automated application/contract tests. Credentials are deliberately blank and the contract has not been deployed. Live Mainnet readiness is a separate check after you complete the steps below.
+**Current state:** the object-factory contract is published on Sui Mainnet (see `move/solvency_loop/Published.toml`). The application provides wallet-owned onboarding, personal contacts, real USDC expenses, payment history, cooldown savings and user-authored memory. No sample contacts, preset bills or memory-seeding action are enabled. See `PRODUCTION_READINESS.md` for verification evidence and remaining wallet-approved checks.
 
 **Access policy:** a wallet-owned MemWal account is mandatory. Users create or reuse that account, authorize the app delegate, then register their profile before the financial dashboard opens. The contract accepts an actual MemWalAccount object and checks its owner and profile link for financial actions. Payments and vaults use only native Circle USDC on Sui Mainnet. SUI is needed for network gas. There is no guest payment, off-chain settlement, card/fiat payment, alternative token, or MemWal-free payment path. Existing-fund recovery still requires the user's genuine linked MemWal account, but works after memory revocation/freezing to avoid trapping funds.
 
@@ -138,14 +138,13 @@ Environment checklist:
 
 | Variable | What you supply | When |
 | --- | --- | --- |
-| `TATUM_API_KEY` | Your Tatum key enabled for the Sui Mainnet gateway | Before CLI verification/deployment |
+| `TATUM_API_KEY` | Your Tatum key enabled for the Sui Mainnet gateway | Before starting the app |
 | `MEMWAL_DELEGATE_PRIVATE_KEY` | App delegate private key generated below | Before starting the app |
 | `NEXT_PUBLIC_MEMWAL_AGENT_ID` | Matching raw public key generated below | Before starting the app |
 | `NEXT_PUBLIC_MEMWAL_PACKAGE_ID`, `NEXT_PUBLIC_MEMWAL_REGISTRY_ID` | Verified public protocol IDs shown above | Before starting the app |
 | `NEXT_PUBLIC_SOLVENCY_PACKAGE_ID`, `NEXT_PUBLIC_SOLVENCY_REGISTRY_ID` | Values from your successful publish transaction | After deployment |
 | `APP_ORIGIN` | Leave blank locally; set the public HTTPS origin on a host | For hosted deployment |
-| `NEXT_PUBLIC_ALEX_SUI_WALLET`, `NEXT_PUBLIC_PRIYA_SUI_WALLET`, `NEXT_PUBLIC_SAM_SUI_WALLET` | Optional real contact defaults; blank is allowed | Optional; users can enter contacts in the UI |
-| `VERIFY_WALLET_ADDRESS` | An onboarded wallet with at least ten readable memories | Before `verify:mainnet` only |
+| `VERIFY_WALLET_ADDRESS` | An onboarded wallet; an empty memory account is valid | Before `verify:mainnet` only |
 | `OPENAI_API_KEY` | Not needed for the default relayer flow; server-only manual mode credential | Optional |
 
 No user wallet private key, personal MemWal account ID, database URL, or payment-provider key belongs in this setup. The RPC URL is fixed in code; the old `NEXT_PUBLIC_TATUM_SUI_RPC` setting is ignored.
@@ -160,7 +159,7 @@ Keep this delegate stable across restarts. Rotating it later requires each user 
 
 Remove the obsolete `NEXT_PUBLIC_MEMWAL_ACCOUNT_ID` from existing environment files. It is no longer read. No per-user credentials or account IDs need to be added to `.env.local`. The same backend delegate can be approved by multiple account owners, but the backend still has account-wide access while approved. User-owned accounts provide ownership and revocation control; they do not make the backend unable to read authorized memories. Namespaces organize data inside an account and are not separate access boundaries. See [MemWal ownership and permissions](https://docs.wal.app/walrus-memory/contract/ownership-and-permissions).
 
-Friend wallets can instead be entered in the UI and saved on chain. They must be distinct from each other and the creator. Mainnet USDC is fixed to:
+Contacts are entered by each user in Account and saved on chain. Bill participants can be chosen from those contacts or entered directly. Wallets must be distinct from each other and the creator. The previous named-contact environment defaults are no longer read. Mainnet USDC is fixed to:
 
 ```text
 0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC

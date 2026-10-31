@@ -15,7 +15,8 @@
     "move:verify-bundle": "node scripts/verify-move-bundle.mjs",
     "verify:mainnet": "tsx scripts/verify-mainnet-readiness.ts",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
-    "rpc:bridge": "node scripts/tatum-rpc-bridge.mjs"
+    "rpc:bridge": "node scripts/tatum-rpc-bridge.mjs",
+    "verify:infrastructure": "tsx scripts/verify-mainnet-readiness.ts --infrastructure-only"
   },
   "dependencies": {
     "@mysten-incubation/memwal": "0.1.11",
@@ -30,7 +31,8 @@
     "react": "19.2.9",
     "react-dom": "19.2.9",
     "server-only": "^0.0.1",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "graphql": "17.0.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

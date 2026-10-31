@@ -1,166 +1,93 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSignPersonalMessage } from '@mysten/dapp-kit';
-import type { Transaction } from '@mysten/sui/transactions';
-import { errorMessage, publicConfig } from '@/lib/config';
-import { buildCreateMemWalAccountTx, buildMemWalDelegateTx, fetchWalletMemWalAccount, type WalletMemWalAccount } from '@/lib/memwal-account';
-import { formatUsdc } from '@/lib/money';
-import { computeSplit } from '@/lib/split-rules';
-import { requestMemory } from '@/lib/memory-api';
-import { tatumSuiClient } from '@/lib/tatum-rpc-client';
-import type { MemoryPayload, RecalledMemory, SettlementCursor } from '@/lib/memory-protocol';
-import {
-  fetchFullUserStateViaTatum, fetchActiveGroupSplitsViaTatum, fetchOwnedCooldownVaultsViaTatum,
-  buildRegisterUserAndContactsTx, buildCreateGroupSplitTx, buildSettleSplitShareTx, buildSplitActionTx,
-  buildLockInCooldownVaultTx, buildUnlockCooldownVaultTx, confirmTransaction,
-  type OnChainUserProfile, type OnChainGroupSplit, type OnChainCooldownVault,
-} from '@/lib/onchain-user-manager';
-import { IdentityAndContactsPanel, type FriendInput } from '@/components/IdentityAndContactsPanel';
-import { MemWalAccountPanel } from '@/components/MemWalAccountPanel';
-import { FundRecoveryPanel } from '@/components/FundRecoveryPanel';
-import { onboardingStatus } from '@/lib/onboarding';
-import { SmartSplitEnginePanel } from '@/components/SmartSplitEnginePanel';
-import { CounterpartySettlementPanel } from '@/components/CounterpartySettlementPanel';
-import { CooldownVaultPanel } from '@/components/CooldownVaultPanel';
-import { MemoryAndRpcInspector } from '@/components/MemoryAndRpcInspector';
-
-function initialFriends(): FriendInput[] {
-  return [
-    { handle: '@alex', walletAddress: process.env.NEXT_PUBLIC_ALEX_SUI_WALLET || '' },
-    { handle: '@priya', walletAddress: process.env.NEXT_PUBLIC_PRIYA_SUI_WALLET || '' },
-    { handle: '@sam', walletAddress: process.env.NEXT_PUBLIC_SAM_SUI_WALLET || '' },
-  ];
-}
-export default function SolvencyLoopDashboard() {
-  const account = useCurrentAccount(), wallet = account?.address || '';
-  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
-  const { mutateAsync: signMessage } = useSignPersonalMessage();
-  const [setup, setSetup] = useState<{ configured: boolean; missing: string[] } | null>(null);
-  const [profile, setProfile] = useState<OnChainUserProfile | null>(null);
-  const [memoryAccount, setMemoryAccount] = useState<WalletMemWalAccount | null>(null), [memoryAccountLoaded, setMemoryAccountLoaded] = useState(false);
-  const [historyCursor, setHistoryCursor] = useState<SettlementCursor | null>(null), [historyStarted, setHistoryStarted] = useState(false);
-  const [splits, setSplits] = useState<OnChainGroupSplit[]>([]), [vaults, setVaults] = useState<OnChainCooldownVault[]>([]);
-  const [memories, setMemories] = useState<RecalledMemory[]>([]), [logs, setLogs] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
-  const [pendingLearning, setPendingLearning] = useState('');
-  const [handle, setHandle] = useState(''), [floor, setFloor] = useState(300), [friends, setFriends] = useState(initialFriends);
-  const [title, setTitle] = useState('Dinner & drinks'), [food, setFood] = useState(11.5), [drinks, setDrinks] = useState(5), [enabled, setEnabled] = useState(true);
-  const [now, setNow] = useState(0);
-  const generation = useRef(0), activeWallet = useRef(wallet), operation = useRef(false);
-  const { ready: hasMemoryAccess, canRecover } = onboardingStatus(profile, memoryAccount);
-  activeWallet.current = wallet;
-  const append = useCallback((message: string) => setLogs(old => [new Date().toLocaleTimeString() + ' · ' + message, ...old].slice(0, 100)), []);
-  useEffect(() => {
-    fetch('/api/config').then(async r => { if (!r.ok) throw new Error('Setup status unavailable.'); setSetup(await r.json()); }).catch(e => setError(errorMessage(e)));
-    setNow(Date.now()); const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer);
-  }, []);
-  const sync = useCallback(async (address: string) => {
-    const version = generation.current;
-    const [user, ownedMemory] = await Promise.all([fetchFullUserStateViaTatum(address), fetchWalletMemWalAccount(address)]);
-    const [groupSplits, ownedVaults] = onboardingStatus(user, ownedMemory).canRecover
-      ? await Promise.all([fetchActiveGroupSplitsViaTatum(address), fetchOwnedCooldownVaultsViaTatum(address)]) : [[], []];
-    if (version !== generation.current || address !== activeWallet.current) return;
-    setProfile(user); setSplits(groupSplits); setVaults(ownedVaults);
-    setMemoryAccount(ownedMemory); setMemoryAccountLoaded(true);
-    if (!ownedMemory?.active || !ownedMemory.delegateAuthorized || user.memwalAccountId !== ownedMemory.accountId) setMemories([]);
-    if (user.isRegisteredOnChain) {
-      setHandle(user.handle); setFloor(user.safeFloorUsdc);
-      setFriends(initialFriends().map(f => ({ ...f, walletAddress: user.contacts.find(c => c.handle === f.handle)?.walletAddress || '' })));
-    }
-    append('Confirmed Sui state at Tatum checkpoint #' + user.latestCheckpoint);
-  }, [append]);
-  useEffect(() => {
-    generation.current++;
-    setMemoryAccount(null); setMemoryAccountLoaded(false); setHistoryCursor(null); setHistoryStarted(false);
-    setProfile(null); setSplits([]); setVaults([]); setMemories([]); setFriends(initialFriends()); setHandle(''); setFloor(300); setLogs([]); setError(''); setNotice(''); setPendingLearning('');
-    if (!wallet || !setup?.configured) return;
-    let current = true;
-    setBusy(true);
-    sync(wallet).catch(e => { if (current) setError(errorMessage(e)); }).finally(() => { if (current) setBusy(false); });
-    return () => { current = false; };
-  }, [wallet, setup?.configured, sync]);
-  const run = async (work: () => Promise<void>) => {
-    if (operation.current) return;
-    operation.current = true; setBusy(true); setError(''); setNotice('');
-    try { await work(); } catch (e) { const message = errorMessage(e); setError(message); append(message); }
-    finally { operation.current = false; setBusy(false); }
-  };
-  const memory = async (payload: Omit<MemoryPayload, 'walletAddress'>) => {
-    const address = wallet;
-    const result = await requestMemory({ ...payload, walletAddress: address }, signMessage);
-    if (address !== activeWallet.current) return result;
-    if (result.memories) setMemories(result.memories);
-    append('Walrus ' + payload.action + ' confirmed at Tatum checkpoint #' + result.tatumAnchor?.checkpoint);
-    return result;
-  };
-  const transact = async (transaction: Transaction | Promise<Transaction>, learn = false, mode: 'application' | 'onboarding' | 'recovery' = 'application') => {
-    const address = wallet;
-    if (mode === 'application' && !hasMemoryAccess) throw new Error('Complete MemWal account creation, authorization, and profile registration before using the application.');
-    if (mode === 'recovery' && !canRecover) throw new Error('A wallet-owned MemWal account linked to your profile is required to recover funds.');
-    const tx = await transaction;
-    tx.setSenderIfNotSet(address);
-    await tx.build({ client: tatumSuiClient });
-    if (address !== activeWallet.current) throw new Error('Wallet changed; review the action again.');
-    const response = await signAndExecute({ transaction: tx, chain: 'sui:mainnet' });
-    await confirmTransaction(response.digest);
-    if (address !== activeWallet.current) return;
-    append('Confirmed Sui transaction ' + response.digest);
-    setNotice('Transaction confirmed: ' + response.digest);
-    if (learn) setPendingLearning(response.digest);
-    await sync(address);
-    if (address !== activeWallet.current) return;
-    if (learn) {
-      try { await memory({ action: 'settlement', digest: response.digest }); if (address === activeWallet.current) setPendingLearning(''); }
-      catch (e) { if (address === activeWallet.current) { setPendingLearning(response.digest); setError('Payment is confirmed. Memory update failed: ' + errorMessage(e) + '. You can retry the memory update below.'); } }
-    }
-  };
-  let computed = { shares: [] as ReturnType<typeof computeSplit>['shares'], total: 0, creatorShare: 0 }, splitError = '';
-  try { if (wallet) computed = computeSplit(wallet, friends, food, drinks, memories, enabled); } catch (e) { splitError = errorMessage(e); }
-  const mainnet = !!account?.chains.includes('sui:mainnet'), disabled = busy || !setup?.configured || !mainnet;
-  const memoryDisabled = disabled || !hasMemoryAccess;
-
-  return <main className="min-h-screen max-w-7xl mx-auto p-xl lg:p-4xl space-y-3xl">
-    <header className="flex flex-wrap items-center justify-between gap-lg border-b border-secondary pb-xl">
-      <div><p className="text-sm font-medium text-brand-primary">Sui Mainnet · Walrus memory</p><h1 className="text-heading-sm font-semibold">SolvencyLoop</h1><p className="text-sm text-tertiary mt-xs">Shared expenses, personal liquidity, and decisions you can learn from.</p></div>
-      <div className="flex flex-wrap items-center gap-md"><button className="button-secondary" disabled={disabled || !wallet} onClick={() => run(() => sync(wallet))}>Refresh state</button><ConnectButton/></div>
-    </header>
-    {!setup ? <p className="text-sm text-tertiary" role="status">Checking application configuration…</p>
-      : !setup.configured && <div className="rounded-xl bg-utility-warning-50 p-xl space-y-sm" role="status"><h2 className="font-semibold text-utility-warning-700">Mainnet setup required</h2><p className="text-sm">The application is ready to configure. Deploy the contract and fill in your local environment before using wallet actions.</p><p className="text-xs font-mono break-words">Missing: {setup.missing.join(', ')}</p><p className="text-xs text-tertiary">See README.md for deployment and credential setup.</p></div>}
-    {error && <div className="rounded-xl bg-utility-error-50 p-xl text-sm text-utility-error-700 break-words" role="alert">{error}</div>}
-    {pendingLearning && <button className="button-secondary" disabled={memoryDisabled} onClick={() => run(async () => { await memory({ action: 'settlement', digest: pendingLearning }); setPendingLearning(''); setNotice('Settlement learning committed to Walrus.'); })}>Retry memory update for confirmed payment</button>}
-    {notice && <div className="rounded-xl bg-utility-success-50 p-xl text-sm text-utility-success-700 break-words" role="status">{notice}</div>}
-    {busy && <p className="text-sm text-tertiary" role="status">Working… Approve any requested wallet signature, then wait for confirmation.</p>}
-    {!account ? <section className="panel"><h2 className="text-lg font-semibold">Connect your Sui wallet</h2><p className="text-sm text-tertiary">Connect to manage your profile, create USDC splits, and view your cooldown vaults. All persistent financial state lives on Sui; behavioral memories live on Walrus.</p></section> : <>
-      {!mainnet && <p className="text-sm text-error-primary" role="alert">Choose a wallet account that supports Sui Mainnet.</p>}
-      <div className="flex flex-wrap justify-between gap-lg text-sm"><p className="font-mono break-all">Wallet: {wallet}</p><p>{profile ? formatUsdc(profile.usdcBalance) + ' USDC · ' + profile.suiBalance.toFixed(4) + ' SUI · Checkpoint #' + profile.latestCheckpoint : 'No on-chain state loaded'}</p></div>
-      <MemWalAccountPanel account={memoryAccount} loaded={memoryAccountLoaded} profileAccountId={profile?.memwalAccountId} delegatePublicKey={publicConfig().memwalDelegatePublicKey} disabled={disabled}
-        onCreate={() => run(() => transact(buildCreateMemWalAccountTx(wallet), false, 'onboarding'))}
-        onAuthorize={() => run(() => transact(buildMemWalDelegateTx(wallet, 'authorize'), false, 'onboarding'))}
-        onRevoke={() => run(async () => { try { await transact(buildMemWalDelegateTx(wallet, 'revoke'), false, 'onboarding'); } finally { setMemories([]); } })}/>
-        <IdentityAndContactsPanel profile={profile} handle={handle} setHandle={setHandle} floor={floor} setFloor={setFloor} friends={friends} setFriend={(i, value) => setFriends(old => old.map((f, n) => n === i ? { ...f, walletAddress: value } : f))} disabled={disabled} canSave={memoryAccountLoaded && !!memoryAccount?.active && memoryAccount.delegateAuthorized} memoryDisabled={memoryDisabled}
-          onSave={() => run(async () => { const owned = await fetchWalletMemWalAccount(wallet); if (!owned) throw new Error('Create your memory account first.'); await transact(buildRegisterUserAndContactsTx({ walletAddress: wallet, handle, safeFloorUsdc: floor, memwalAccountId: owned.accountId, friends: friends.filter(f => f.walletAddress.trim()).map(f => ({ address: f.walletAddress, handle: f.handle })) }), false, 'onboarding'); })}
-          onSeed={() => run(async () => { const result = await memory({ action: 'seed_12_mainnet', friendWallets: { alex: friends[0].walletAddress, priya: friends[1].walletAddress, sam: friends[2].walletAddress } }); setNotice(result.count + ' demo memories committed to Walrus. Recall them to apply their rules.'); })}/>
-      {!hasMemoryAccess && <section className="rounded-xl bg-utility-brand-50 p-xl space-y-sm" role="status"><h2 className="font-semibold text-utility-brand-700">Complete MemWal onboarding</h2><p className="text-sm">Create or reuse your wallet-owned MemWal account, authorize app memory access, and save your profile. The application opens only after all three steps are complete. Payments use native Circle USDC on Sui Mainnet.</p></section>}
-      {!hasMemoryAccess && canRecover && <FundRecoveryPanel wallet={wallet} splits={splits} vaults={vaults} now={now} disabled={disabled}
-        onCancel={id => run(() => transact(buildSplitActionTx(wallet, id, 'cancel_group_split'), false, 'recovery'))}
-        onRefund={id => run(() => transact(buildSplitActionTx(wallet, id, 'refund_escrow'), false, 'recovery'))}
-        onUnlock={id => run(() => transact(buildUnlockCooldownVaultTx({ ownerAddress: wallet, vaultObjectId: id }), false, 'recovery'))}/>}
-      {hasMemoryAccess && <><div className="grid gap-xl lg:grid-cols-2">
-        <SmartSplitEnginePanel title={title} setTitle={setTitle} food={food} setFood={setFood} drinks={drinks} setDrinks={setDrinks} enabled={enabled} setEnabled={setEnabled} {...computed} error={splitError} memoryCount={memories.length} disabled={disabled}
-          onCreate={() => run(() => transact(buildCreateGroupSplitTx({ walletAddress: wallet, title, totalAmountUsdc: computed.total, shares: computed.shares.map(s => ({ debtorAddress: s.walletAddress, amountUsdc: s.amountUsdc, requiresUpfrontEscrow: s.requiresUpfrontEscrow })) })))}/>
-        <CounterpartySettlementPanel wallet={wallet} splits={splits} now={now} disabled={disabled}
-          onPay={(split, amount, upfront) => run(() => transact(buildSettleSplitShareTx({ payerAddress: wallet, splitObjectId: split.splitId, amountUsdc: amount, upfront }), !upfront))}
-          onAction={(id, action) => run(() => transact(buildSplitActionTx(wallet, id, action), action === 'activate_group_split'))}/>
-        <CooldownVaultPanel balance={profile?.usdcBalance || 0} floor={profile?.safeFloorUsdc ?? floor} registered={!!profile?.isRegisteredOnChain} vaults={vaults} now={now} disabled={disabled} memoryDisabled={memoryDisabled}
-          onLock={amount => run(() => transact(buildLockInCooldownVaultTx({ ownerAddress: wallet, amountUsdc: amount })))}
-          onUnlock={id => run(() => transact(buildUnlockCooldownVaultTx({ ownerAddress: wallet, vaultObjectId: id })))}
-          onReflect={text => run(async () => { await memory({ action: 'remember', category: 'habit_regret', text }); setNotice('Reflection committed to Walrus.'); })}/>
-      </div>
-      <MemoryAndRpcInspector memories={memories} logs={logs} disabled={memoryDisabled} historyStarted={historyStarted} historyHasMore={!!historyCursor}
-        onImportSettlements={() => run(async () => { const address = wallet; const result = await memory({ action: 'sync_settlements', ...(historyCursor ? { cursor: historyCursor } : {}) }); if (address !== activeWallet.current) return; setHistoryStarted(true); setHistoryCursor(result.nextCursor || null); setNotice(result.count + ' verified settlement observations committed to your account.' + (result.nextCursor ? ' Continue with the next history page.' : ' History scan complete.')); })}
-        onRecall={() => run(async () => { await memory({ action: 'recall_all' }); })}
-        onAnalyze={(text, category) => run(async () => { await memory({ action: 'analyze', text, category }); setNotice('Extracted facts committed to Walrus. Recall to inspect them.'); })}
-        onRestore={category => run(async () => { const r = await memory({ action: 'restore', category }); setNotice(r.result?.truncated ? 'More memories remain. Restore again to continue recovery.' : 'Category restore completed. Recall to inspect its memories.'); })}/></>}
-    </>}
-  </main>;
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {ConnectButton,useCurrentAccount,useSignAndExecuteTransaction,useSignPersonalMessage} from '@mysten/dapp-kit';
+import type {Transaction} from '@mysten/sui/transactions';
+import {errorMessage,publicConfig} from '@/lib/config';
+import {buildCreateMemWalAccountTx,buildMemWalDelegateTx,fetchWalletMemWalAccount,type WalletMemWalAccount} from '@/lib/memwal-account';
+import {formatUsdc,usdcToUnits,unitsToUsdc} from '@/lib/money';
+import {requestMemory} from '@/lib/memory-api';
+import {tatumSuiClient} from '@/lib/tatum-rpc-client';
+import type {MemoryPayload,RecalledMemory,SettlementCursor} from '@/lib/memory-protocol';
+import {fetchFullUserStateViaTatum,fetchGroupSplitPageViaTatum,fetchGroupSplitByIdViaTatum,fetchOwnedCooldownVaultsViaTatum,buildRegisterUserAndContactsTx,buildCreateGroupSplitTx,buildSettleSplitShareTx,buildSplitActionTx,buildLockInCooldownVaultTx,buildUnlockCooldownVaultTx,confirmTransaction,type OnChainUserProfile,type OnChainGroupSplit,type OnChainCooldownVault} from '@/lib/onchain-user-manager';
+import {IdentityAndContactsPanel,type FriendInput} from '@/components/IdentityAndContactsPanel';
+import {MemWalAccountPanel} from '@/components/MemWalAccountPanel';
+import {FundRecoveryPanel} from '@/components/FundRecoveryPanel';
+import {onboardingStatus} from '@/lib/onboarding';
+import {SmartSplitEnginePanel} from '@/components/SmartSplitEnginePanel';
+import {CounterpartySettlementPanel} from '@/components/CounterpartySettlementPanel';
+import {CooldownVaultPanel} from '@/components/CooldownVaultPanel';
+import {MemoryAndRpcInspector} from '@/components/MemoryAndRpcInspector';
+const views=['Overview','Expenses','Savings','Memory','Account'] as const;
+type View=typeof views[number];
+function readableError(e:unknown){const m=errorMessage(e);return /429|Too Many Requests/i.test(m)?'The network provider is busy. Wait a moment, then try again.':/404|Not Found/i.test(m)?'A network resource could not be loaded. Please refresh or contact support.':m;}
+export default function SolvencyLoopDashboard(){
+ const account=useCurrentAccount(),wallet=account?.address||'';
+ const {mutateAsync:signAndExecute}=useSignAndExecuteTransaction();const {mutateAsync:signMessage}=useSignPersonalMessage();
+ const [setup,setSetup]=useState<{configured:boolean;missing:string[]}|null>(null),[profile,setProfile]=useState<OnChainUserProfile|null>(null);
+ const [memoryAccount,setMemoryAccount]=useState<WalletMemWalAccount|null>(null),[loaded,setLoaded]=useState(false);
+ const [splits,setSplits]=useState<OnChainGroupSplit[]>([]),[vaults,setVaults]=useState<OnChainCooldownVault[]>([]),[splitCursor,setSplitCursor]=useState<SettlementCursor|null>(null);
+ const [memories,setMemories]=useState<RecalledMemory[]>([]),[logs,setLogs]=useState<string[]>([]),[historyCursor,setHistoryCursor]=useState<SettlementCursor|null>(null),[historyStarted,setHistoryStarted]=useState(false);
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[pendingLearning,setPendingLearning]=useState('');
+ const [pendingDigest,setPendingDigest]=useState(''),[needsRefresh,setNeedsRefresh]=useState(false);
+ const [handle,setHandle]=useState(''),[floor,setFloor]=useState(0),[friends,setFriends]=useState<FriendInput[]>([]),[view,setView]=useState<View>('Overview'),[billInput,setBillInput]=useState(''),[creating,setCreating]=useState(false),[now,setNow]=useState(0);
+ const activeWallet=useRef(wallet),generation=useRef(0),operation=useRef(false),openedLink=useRef('');activeWallet.current=wallet;
+ const {ready,canRecover}=onboardingStatus(profile,memoryAccount),mainnet=!!account?.chains.includes('sui:mainnet');
+ const readDisabled=busy||!setup?.configured||!mainnet,disabled=readDisabled||!!pendingDigest||needsRefresh,memoryDisabled=disabled||!ready;
+ const append=useCallback((message:string)=>setLogs(old=>[new Date().toLocaleTimeString()+' · '+message,...old].slice(0,100)),[]);
+ useEffect(()=>{const abort=new AbortController();fetch('/api/config',{signal:abort.signal}).then(async r=>{if(!r.ok)throw new Error('Service configuration could not be checked.');setSetup(await r.json());}).catch(e=>{if(!abort.signal.aborted)setError(readableError(e));});setNow(Date.now());const timer=window.setInterval(()=>setNow(Date.now()),1000);return()=>{abort.abort();window.clearInterval(timer);};},[]);
+ const sync=useCallback(async(address:string)=>{
+  const version=generation.current;const [user,memory]=await Promise.all([fetchFullUserStateViaTatum(address),fetchWalletMemWalAccount(address)]);
+  if(version!==generation.current||address!==activeWallet.current)return;
+  setProfile(user);setMemoryAccount(memory);setLoaded(true);setHandle(user.handle);setFloor(user.safeFloorUsdc);setFriends(user.contacts.map(c=>({...c,id:c.walletAddress})));
+  if(!onboardingStatus(user,memory).ready)setMemories([]);
+  if(onboardingStatus(user,memory).canRecover){const [b,v]=await Promise.allSettled([fetchGroupSplitPageViaTatum(address),fetchOwnedCooldownVaultsViaTatum(address)]);if(version!==generation.current||address!==activeWallet.current)return;
+   if(b.status==='fulfilled'){setSplits(b.value.splits);setSplitCursor(b.value.nextCursor);}if(v.status==='fulfilled')setVaults(v.value);
+   const failure=[b,v].find(r=>r.status==='rejected');if(failure?.status==='rejected')throw new Error('Your account is loaded, but some balances or bills could not refresh. '+readableError(failure.reason));
+  }else{setSplits([]);setVaults([]);setSplitCursor(null);}
+  setNeedsRefresh(false);append('Account refreshed at checkpoint '+user.latestCheckpoint);
+ },[append]);
+ useEffect(()=>{generation.current++;setLoaded(false);setProfile(null);setMemoryAccount(null);setSplits([]);setVaults([]);setMemories([]);setLogs([]);setHandle('');setFloor(0);setFriends([]);setView('Overview');setCreating(false);setSplitCursor(null);setHistoryCursor(null);setHistoryStarted(false);setError('');setNotice('');setPendingLearning('');setPendingDigest('');setNeedsRefresh(false);setBillInput('');openedLink.current='';
+  if(!wallet||!setup?.configured||!mainnet){setBusy(false);return;}
+  let current=true;const timer=window.setTimeout(()=>{setBusy(true);sync(wallet).catch(e=>{if(current)setError(readableError(e));}).finally(()=>{if(current)setBusy(false);});},100);
+  return()=>{current=false;window.clearTimeout(timer);};
+ },[wallet,setup?.configured,mainnet,sync]);
+ const run=async(work:()=>Promise<void>):Promise<boolean>=>{if(operation.current)return false;const address=wallet;operation.current=true;setBusy(true);setError('');setNotice('');try{await work();return address===activeWallet.current;}catch(e){if(address===activeWallet.current){setError(readableError(e));append(readableError(e));}return false;}finally{operation.current=false;setBusy(false);}};
+ const memory=async(payload:Omit<MemoryPayload,'walletAddress'>)=>{const address=wallet;const result=await requestMemory({...payload,walletAddress:address},signMessage);if(address===activeWallet.current){if(result.memories)setMemories(result.memories);append('Memory '+payload.action+' confirmed');}return result;};
+ const transact=async(transaction:Transaction|Promise<Transaction>,learn=false,mode:'application'|'onboarding'|'recovery'='application')=>{
+  const address=wallet;if(pendingDigest||needsRefresh)throw new Error('Refresh and check your last transaction before starting another one.');if(mode==='application'&&!ready)throw new Error('Complete your memory account and profile before using the application.');if(mode==='recovery'&&!canRecover)throw new Error('Your owned profile and linked memory account are required to recover funds.');
+  const tx=await transaction;tx.setSenderIfNotSet(address);await tx.build({client:tatumSuiClient});if(address!==activeWallet.current)throw new Error('Your wallet changed. Review the action again.');
+  const response=await signAndExecute({transaction:tx,chain:'sui:mainnet'});if(address!==activeWallet.current)return;setPendingDigest(response.digest);await confirmTransaction(response.digest);setPendingDigest('');if(address!==activeWallet.current)return;
+  append('Confirmed transaction '+response.digest);setNotice('Transaction confirmed.');if(learn)setPendingLearning(response.digest);
+  try{await sync(address);}catch(e){setNeedsRefresh(true);setError('Your transaction is confirmed. Refresh your account before continuing. '+readableError(e));return;}
+  if(learn&&address===activeWallet.current){try{await memory({action:'settlement',digest:response.digest});setPendingLearning('');}catch(e){setError('Payment confirmed. Its memory update could not finish. You can retry the memory update without paying again. '+readableError(e));}}
+ };
+ const openBill=useCallback(async(input:string,address:string)=>{let id=input.trim();if(/^https?:/.test(id))id=new URL(id).searchParams.get('split')||'';const bill=await fetchGroupSplitByIdViaTatum(address,id);if(address!==activeWallet.current)return;setSplits(old=>[bill,...old.filter(b=>b.splitId!==bill.splitId)]);setView('Expenses');setCreating(false);},[]);
+ useEffect(()=>{if(!ready)return;const id=new URLSearchParams(window.location.search).get('split');if(!id||openedLink.current===wallet+id)return;openedLink.current=wallet+id;setBillInput(id);openBill(id,wallet).catch(e=>{if(wallet===activeWallet.current)setError(readableError(e));});},[ready,wallet,openBill]);
+ const saveProfile=()=>run(async()=>{const owned=await fetchWalletMemWalAccount(wallet);if(!owned)throw new Error('Create your memory account first.');await transact(buildRegisterUserAndContactsTx({walletAddress:wallet,handle,safeFloorUsdc:floor,memwalAccountId:owned.accountId,friends:friends.filter(c=>c.handle.trim()||c.walletAddress.trim()).map(c=>({address:c.walletAddress,handle:c.handle}))}),false,'onboarding');setNotice('Your profile is saved.');});
+ const identity=(onboarding=false)=><IdentityAndContactsPanel profile={profile} handle={handle} setHandle={setHandle} floor={floor} setFloor={setFloor} friends={friends} setFriends={setFriends} disabled={disabled} canSave={loaded&&!!memoryAccount?.active&&memoryAccount.delegateAuthorized} onboarding={onboarding} onSave={saveProfile}/>;
+ const memoryAccountPanel=<MemWalAccountPanel key={wallet} account={memoryAccount} loaded={loaded} profileAccountId={profile?.memwalAccountId} delegatePublicKey={publicConfig().memwalDelegatePublicKey} disabled={disabled||(profile?.suiBalance??0)<=0}
+  onCreate={()=>void run(()=>transact(buildCreateMemWalAccountTx(wallet),false,'onboarding'))} onAuthorize={()=>void run(()=>transact(buildMemWalDelegateTx(wallet,'authorize'),false,'onboarding'))} onRevoke={()=>void run(async()=>{try{await transact(buildMemWalDelegateTx(wallet,'revoke'),false,'onboarding');}finally{setMemories([]);}})}/>;
+ const settlementPanel=<CounterpartySettlementPanel wallet={wallet} splits={splits} now={now} disabled={disabled} onPay={(s,amount,upfront)=>void run(()=>transact(buildSettleSplitShareTx({payerAddress:wallet,splitObjectId:s.splitId,amountUsdc:amount,upfront}),!upfront))} onAction={(id,action)=>void run(()=>transact(buildSplitActionTx(wallet,id,action),action==='activate_group_split'))}/>;
+ let owed=0n,receivable=0n;for(const s of splits){if(s.isCancelled)continue;for(const p of s.participants){if(p.isSettled)continue;if(p.debtor===wallet&&!p.isFunded)owed+=usdcToUnits(p.amountOwedUsdc);if(s.creator===wallet)receivable+=usdcToUnits(p.amountOwedUsdc);}}
+ const step=!memoryAccount?1:!memoryAccount.active||!memoryAccount.delegateAuthorized?2:3;
+ return <main className="min-h-screen max-w-7xl mx-auto p-xl lg:p-4xl space-y-xl"><header className="flex flex-wrap items-center justify-between gap-lg border-b border-secondary pb-xl"><div><p className="text-sm font-medium text-brand-primary">SolvencyLoop</p><h1 className="text-heading-xs font-semibold mt-sm">{!account?'Shared expenses. Clear balances.':!ready?'Welcome to SolvencyLoop':view}</h1><p className="text-sm text-tertiary mt-sm">Split expenses, settle in USDC, and keep room in your budget.</p></div><div className="flex items-center flex-wrap gap-md">{account&&<button className="button-secondary" disabled={readDisabled} onClick={()=>void run(()=>sync(wallet))}>Refresh</button>}<ConnectButton/></div></header>
+ {!setup&&<p role="status" className="text-sm text-tertiary">Checking service availability…</p>}{setup&&!setup.configured&&<section className="panel"><h2 className="font-semibold">Service setup is incomplete</h2><p className="text-sm text-tertiary">The operator needs to finish configuring this application before wallet actions are available.</p><details className="text-xs text-tertiary"><summary className="cursor-pointer">Operator details</summary><p className="font-mono break-all mt-sm">Missing configuration: {setup.missing.join(', ')}</p></details></section>}
+ {error&&<div role="alert" className="rounded-xl bg-utility-error-50 p-xl text-sm text-utility-error-700 break-words">{error}{account&&<button className="block mt-md underline focus-visible:ring-2 focus-visible:ring-focus-ring" disabled={readDisabled} onClick={()=>void run(()=>sync(wallet))}>Try refreshing your account</button>}</div>}{notice&&<p role="status" className="rounded-xl bg-utility-success-50 p-xl text-sm text-utility-success-700">{notice}</p>}{busy&&<p role="status" aria-live="polite" className="text-sm text-tertiary">Working… Follow any wallet approval, then wait for confirmation.</p>}
+ {pendingDigest&&<div role="status" className="rounded-xl bg-utility-warning-50 p-xl space-y-md"><p className="text-sm text-utility-warning-700">Your transaction was submitted. Check its status before taking another action.</p><p className="font-mono text-xs break-all">{pendingDigest}</p><button className="button-secondary" disabled={readDisabled} onClick={()=>void run(async()=>{const address=wallet,r=await tatumSuiClient.getTransactionBlock({digest:pendingDigest,options:{showEffects:true}});if(address!==activeWallet.current)return;if(!r.effects?.status)throw new Error('Confirmation is still pending. Check again shortly.');setPendingDigest('');await sync(address);if(r.effects.status.status!=='success')throw new Error('The transaction failed on Sui: '+r.effects.status.error);setNotice('Transaction confirmed.');})}>Check confirmation</button></div>}
+ {!account?<section className="panel max-w-3xl"><h2 className="text-heading-xs font-semibold">Start with your Sui wallet</h2><p className="text-sm text-secondary">Connect your wallet to create your profile and a memory account you own. Then add people, split a real expense, and track what is owed.</p><ol className="space-y-md text-sm"><li>1. Connect a wallet that supports Sui Mainnet.</li><li>2. Create or link your MemWal account and authorize memory access.</li><li>3. Choose a display name and the USDC reserve you want to keep available.</li></ol><p className="text-xs text-tertiary">Payments use native Circle USDC. Keep SUI in your wallet for network fees. Your financial records and contact list are public on Sui; behavioral notes use MemWal and Walrus.</p><ConnectButton/></section>:<>
+ {!mainnet&&<p role="alert" className="text-sm text-error-primary">Connect a wallet account that supports Sui Mainnet.</p>}
+ {!ready?<div className="space-y-xl"><ol aria-label="Account setup progress" className="grid gap-md sm:grid-cols-3">{['Memory account','Authorize access','Your profile'].map((label,i)=><li key={label} aria-current={step===i+1?'step':undefined} className={'rounded-lg border p-lg text-sm '+(step===i+1?'border-brand bg-utility-brand-50 text-utility-brand-700':'border-secondary bg-secondary text-tertiary')}>{i+1}. {label}{loaded&&step>i+1?' · Complete':''}</li>)}</ol>
+ {!loaded?<section className="panel"><h2 className="font-semibold">Checking your account</h2><p className="text-sm text-tertiary">We are checking for your existing profile and memory account. An account is created only after these checks succeed.</p></section>:<>{profile&&profile.suiBalance<=0&&<p className="rounded-xl bg-utility-warning-50 p-xl text-sm text-utility-warning-700">Add SUI to your connected wallet to cover account setup and network fees. Your wallet address is <span className="font-mono break-all">{wallet}</span>.</p>}{step<3?memoryAccountPanel:identity(true)}</>}
+ {canRecover&&<FundRecoveryPanel wallet={wallet} splits={splits} vaults={vaults} now={now} disabled={disabled} onCancel={id=>void run(()=>transact(buildSplitActionTx(wallet,id,'cancel_group_split'),false,'recovery'))} onRefund={id=>void run(()=>transact(buildSplitActionTx(wallet,id,'refund_escrow'),false,'recovery'))} onUnlock={id=>void run(()=>transact(buildUnlockCooldownVaultTx({ownerAddress:wallet,vaultObjectId:id}),false,'recovery'))}/>}</div>:<>
+ <nav aria-label="Workspace" className="flex flex-wrap gap-sm border-b border-secondary">{views.map(v=><button key={v} aria-current={v===view?'page':undefined} className={'border-b-2 px-lg py-md text-sm font-semibold focus-visible:ring-2 focus-visible:ring-focus-ring '+(v===view?'border-brand text-brand-primary':'border-transparent text-tertiary hover:text-secondary')} onClick={()=>setView(v)}>{v}</button>)}</nav>
+ {pendingLearning&&<div className="rounded-xl bg-utility-warning-50 p-xl space-y-md"><p className="text-sm text-utility-warning-700">Your payment is confirmed. Its memory update is still pending.</p><button className="button-secondary" disabled={memoryDisabled} onClick={()=>void run(async()=>{await memory({action:'settlement',digest:pendingLearning});setPendingLearning('');setNotice('Payment memory updated.');})}>Retry memory update</button></div>}
+ {view==='Overview'&&<><div className="grid gap-lg sm:grid-cols-3">{[['Wallet balance',formatUsdc(profile!.usdcBalance)],['Your unpaid shares',formatUsdc(unitsToUsdc(owed))],['To receive',formatUsdc(unitsToUsdc(receivable))]].map(([label,value])=><section className="panel" key={label}><p className="text-sm text-tertiary">{label}</p><p className="text-heading-xs font-semibold">{value} <span className="text-sm font-regular">USDC</span></p></section>)}</div><section className="panel"><div className="flex flex-wrap items-center justify-between gap-md"><h2 className="text-heading-xs font-semibold">Your expenses</h2><button className="button" onClick={()=>{setView('Expenses');setCreating(true);}}>Create an expense</button></div><p className="text-sm text-tertiary">Balances reflect loaded bills. Open a shared bill link or load earlier bills in Expenses to include more history.</p>{!splits.length?<p className="text-sm text-tertiary">No expenses loaded yet. Create your first bill or open a link someone shared with you.</p>:<div className="space-y-md">{splits.slice(0,5).map(s=><button className="w-full flex justify-between gap-md text-left border-t border-secondary pt-md focus-visible:ring-2 focus-visible:ring-focus-ring" key={s.splitId} onClick={()=>{setView('Expenses');setCreating(false);}}><span className="text-sm">{s.title}</span><span className="text-sm text-tertiary">{formatUsdc(s.totalBillUsdc)} USDC</span></button>)}</div>}</section></>}
+ {view==='Expenses'&&<div className="space-y-xl"><div className="flex flex-wrap justify-between items-center gap-md"><p className="text-sm text-tertiary">Review bills, fund deposits and settle what you owe.</p><button className="button" onClick={()=>setCreating(!creating)}>{creating?'Close expense form':'Create an expense'}</button></div>{creating&&<SmartSplitEnginePanel key={wallet} wallet={wallet} contacts={profile!.contacts} memories={memories} disabled={disabled} onCreate={p=>run(async()=>{await transact(buildCreateGroupSplitTx({walletAddress:wallet,...p}));setCreating(false);setNotice('Expense created. Copy its bill link to share it with participants.');})}/>}
+ <section className="panel"><h2 className="font-semibold">Open a shared bill</h2><div className="flex flex-wrap items-end gap-md"><label className="block grow space-y-sm text-sm" htmlFor="bill-link">Bill link or ID<input id="bill-link" className="field" value={billInput} onChange={e=>setBillInput(e.target.value)} placeholder="Paste a bill link or Sui object ID"/></label><button className="button-secondary" disabled={disabled||!billInput.trim()} onClick={()=>void run(()=>openBill(billInput,wallet))}>Open bill</button></div></section>{settlementPanel}{splitCursor&&<button className="button-secondary" disabled={disabled} onClick={()=>void run(async()=>{const address=wallet,page=await fetchGroupSplitPageViaTatum(address,splitCursor);if(address!==activeWallet.current)return;setSplits(old=>[...old,...page.splits.filter(s=>!old.some(o=>o.splitId===s.splitId))]);setSplitCursor(page.nextCursor);})}>Load earlier bills</button>}</div>}
+ {view==='Savings'&&<CooldownVaultPanel balance={profile!.usdcBalance} floor={profile!.safeFloorUsdc} registered vaults={vaults} now={now} disabled={disabled} memoryDisabled={memoryDisabled} onLock={amount=>void run(()=>transact(buildLockInCooldownVaultTx({ownerAddress:wallet,amountUsdc:amount})))} onUnlock={id=>void run(()=>transact(buildUnlockCooldownVaultTx({ownerAddress:wallet,vaultObjectId:id})))} onReflect={text=>void run(async()=>{await memory({action:'remember',category:'habit_regret',text});setNotice('Reflection saved.');})}/>}
+ {view==='Memory'&&<MemoryAndRpcInspector contacts={profile!.contacts} memories={memories} logs={logs} disabled={memoryDisabled} historyStarted={historyStarted} historyHasMore={!!historyCursor} onRecall={()=>void run(async()=>{await memory({action:'recall_all'});setNotice('Your memories are loaded.');})} onRemember={(text,category)=>void run(async()=>{await memory({action:'remember',text,category});setNotice('Note saved. Recall memories to see it.');})} onPreference={(subjectWallet,upfrontAboveUsdc)=>void run(async()=>{await memory({action:'save_preference',subjectWallet,upfrontAboveUsdc});setNotice('Payment preference saved. Recall memories to apply it to future bills.');})} onAnalyze={(text,category)=>void run(async()=>{await memory({action:'analyze',text,category});setNotice('Extracted facts saved.');})} onRestore={category=>void run(async()=>{const r=await memory({action:'restore',category});setNotice(r.result?.truncated?'More memories remain. Restore again to continue.':'Memory index restored.');})} onImportSettlements={()=>void run(async()=>{const address=wallet,r=await memory({action:'sync_settlements',...(historyCursor?{cursor:historyCursor}:{})});if(address!==activeWallet.current)return;setHistoryStarted(true);setHistoryCursor(r.nextCursor||null);setNotice(r.count+' payment observations saved.'+(r.nextCursor?' More history is available.':''));})}/>}
+ {view==='Account'&&<div className="space-y-xl"><section className="panel"><h2 className="text-heading-xs font-semibold">Connected wallet</h2><p className="font-mono text-sm break-all">{wallet}</p><p className="text-sm text-tertiary">{profile!.suiBalance.toFixed(4)} SUI available for network fees.</p></section>{identity()}{memoryAccountPanel}</div>}
+ </>}
+ </>}
+ <footer className="border-t border-secondary pt-xl text-xs text-tertiary flex flex-wrap justify-between gap-md"><p>Sui Mainnet · Native Circle USDC</p><p>Your wallet owns your profile, memory account and funds.</p></footer></main>;
 }

@@ -141,7 +141,7 @@ test('memory requests verify live profile ownership before constructing a MemWal
   const f = installOnboardingFixture();
   try {
     f.state.profileOwner = a(99);
-    for (const action of ['recall_all', 'remember', 'analyze', 'restore', 'seed_12_mainnet', 'settlement', 'sync_settlements'] as const) {
+    for (const action of ['recall_all', 'remember', 'analyze', 'restore', 'save_preference', 'settlement', 'sync_settlements'] as const) {
       await assert.rejects(executeMemoryRequest({ action, walletAddress: f.wallet }, 'test-nonce'), /UserProfile is not owned/);
     }
     f.state.profileOwner = f.wallet; f.state.registered = false;

@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { executeMemoryRequest, type MemoryDependencies } from '../src/lib/memory-service';
+import type { OnChainUserProfile } from '../src/lib/onchain-user-manager';
 import type { MemoryPayload } from '../src/lib/memory-protocol';
 import { SUI_MAINNET_USDC_TYPE } from '../src/lib/config';
 const address = '0x' + '1'.repeat(64);
-const state = { profileId: address, wallet: address, handle: 'test', memwalAccountId: address, safeFloorUsdc: 300, contacts: [], usdcBalance: 500, suiBalance: 1, latestCheckpoint: '123', isRegisteredOnChain: true };
+const state: OnChainUserProfile = { profileId: address, wallet: address, handle: 'test', memwalAccountId: address, safeFloorUsdc: 300, contacts: [{walletAddress: '0x'+'2'.repeat(64), handle: 'Contact'}], usdcBalance: 500, suiBalance: 1, latestCheckpoint: '123', isRegisteredOnChain: true };
 function dependencies(overrides: Partial<ReturnType<MemoryDependencies['client']>> = {}) {
   const client = { recall: async () => ({ results: [], total: 0 }), rememberAndWait: async () => ({ id: 'job', blob_id: 'real-test-result', namespace: 'test', owner: address }), analyzeAndWait: async () => ({}), restore: async () => ({ failed: 0, restored: 1, total: 1, skipped: 0, truncated: false, namespace: 'test', owner: address }), ...overrides };
   return { client: () => client, access: async () => ({ accountId: address, owner: address, active: true, delegateAuthorized: true, delegateCount: 1 }), state: async () => state, transaction: async () => ({ effects: { status: { status: 'success' } }, events: [] }), object: async () => ({}) } as unknown as MemoryDependencies;
@@ -12,14 +13,13 @@ function dependencies(overrides: Partial<ReturnType<MemoryDependencies['client']
 test('recall failures propagate instead of being converted into empty successful results', async () => {
   await assert.rejects(executeMemoryRequest({ action: 'recall_all', walletAddress: address }, 'nonce', dependencies({ recall: async () => { throw new Error('relayer unavailable'); } })), /relayer unavailable/);
 });
-test('seed waits for actual commits and only then acknowledges twelve blobs', async () => {
-  let resolve!: () => void, committed = 0, finished = false;
-  const gate = new Promise<void>(r => { resolve = r; });
-  const p: MemoryPayload = { action: 'seed_12_mainnet', walletAddress: address, friendWallets: { alex: '0x'+'2'.repeat(64), priya: '0x'+'3'.repeat(64), sam: '0x'+'4'.repeat(64) } };
-  const pending = executeMemoryRequest(p, 'signed-request-id', dependencies({ rememberAndWait: async () => { await gate; committed++; return { id: String(committed), blob_id: 'blob-' + committed, owner: address, namespace: 'test' }; } })).then(r => { finished = true; return r; });
-  await new Promise(r => setImmediate(r)); assert.equal(finished, false); assert.equal(committed, 0);
-  resolve(); const result = await pending; assert.equal(result.count, 12); assert.equal(committed, 12);
+test('a user preference is acknowledged only after its actual memory commit', async () => {
+ let resolve!:()=>void,finished=false;const gate=new Promise<void>(r=>{resolve=r;});
+ const pending=executeMemoryRequest({action:'save_preference',walletAddress:address,subjectWallet:'0x'+'2'.repeat(64),upfrontAboveUsdc:25},'signed-request-id',dependencies({rememberAndWait:async text=>{assert.match(text,/SOLVENCY_RULE_V1/);await gate;return {id:'job',blob_id:'saved-preference',namespace:'test',owner:address};}})).then(r=>{finished=true;return r;});
+ await new Promise(r=>setImmediate(r));assert.equal(finished,false);resolve();assert.equal((await pending).status,'COMMITTED');
+ await assert.rejects(executeMemoryRequest({action:'save_preference',walletAddress:address,subjectWallet:'0x'+'9'.repeat(64),upfrontAboveUsdc:25},'nonce',dependencies()),/Save this person as a contact/);
 });
+
 test('permanent restore failures do not produce a recovery success claim', async () => {
   await assert.rejects(executeMemoryRequest({ action: 'restore', walletAddress: address }, 'nonce', dependencies({ restore: async () => ({ failed: 1, restored: 0, total: 1, skipped: 0, truncated: false, namespace: 'test', owner: address }) })), /could not be restored/);
 });
@@ -48,7 +48,7 @@ test('all memory actions reject denied ownership/delegate checks before construc
   const deps = dependencies(); let created = 0;
   deps.access = async () => { throw new Error('delegate revoked'); };
   deps.client = () => { created++; throw new Error('must not construct'); };
-  for (const action of ['recall_all', 'remember', 'analyze', 'restore', 'seed_12_mainnet', 'settlement', 'sync_settlements'] as const) {
+  for (const action of ['recall_all', 'remember', 'analyze', 'restore', 'save_preference', 'settlement', 'sync_settlements'] as const) {
     await assert.rejects(executeMemoryRequest({ action, walletAddress: address }, 'nonce', deps), /delegate revoked/);
   }
   assert.equal(created, 0);

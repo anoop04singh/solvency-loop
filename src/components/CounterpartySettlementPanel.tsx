@@ -3,13 +3,13 @@ import type { OnChainGroupSplit } from '@/lib/onchain-user-manager';
 import { formatUsdc } from '@/lib/money';
 interface Props { wallet: string; splits: OnChainGroupSplit[]; now: number; disabled: boolean; onPay: (s: OnChainGroupSplit, amount: number, upfront: boolean) => void; onAction: (id: string, action: 'activate_group_split' | 'cancel_group_split' | 'refund_escrow') => void; }
 export function CounterpartySettlementPanel(p: Props) {
-  return <section className="panel"><h2 className="text-lg font-semibold">Funding & settlement</h2><p className="text-sm text-tertiary">Only splits involving your connected wallet appear here. Switch wallets to fund or settle another participant’s share.</p>
+  return <section className="panel"><h2 className="text-lg font-semibold">Funding & settlement</h2><p className="text-sm text-tertiary">Manage bills involving your wallet. Pay your own share, fund an upfront deposit, or activate a bill you created.</p>
     {!p.splits.length && <p className="text-sm text-tertiary">No splits found for this wallet.</p>}
     <div className="space-y-xl">{p.splits.map(s => {
       const expired = p.now > s.fundingDeadlineMs, refundable = s.isCancelled || expired;
       return <div key={s.splitId} className="border-t border-secondary pt-lg space-y-md">
         <div className="flex flex-wrap justify-between gap-sm"><h3 className="text-sm font-semibold">{s.title}</h3><span className="badge">{s.isCancelled ? 'Cancelled' : s.isActive ? 'Active' : expired ? 'Funding expired' : 'Awaiting upfront funding'}</span></div>
-        <p className="font-mono text-xs text-tertiary break-all">Object: {s.splitId}</p>
+        <div className="flex flex-wrap items-center gap-md"><details className="text-xs text-tertiary"><summary className="cursor-pointer focus-visible:ring-2 focus-visible:ring-focus-ring">Bill ID</summary><p className="font-mono break-all mt-sm">{s.splitId}</p></details><button className="button-secondary" onClick={async e=>{const button=e.currentTarget;try{await navigator.clipboard.writeText(window.location.origin+'/?split='+s.splitId);button.textContent='Link copied';}catch{button.textContent='Copy unavailable';}}}>Copy bill link</button></div>
         {!s.isActive && <p className="text-xs text-tertiary">Funding deadline: {new Date(s.fundingDeadlineMs).toLocaleString()}</p>}
         {s.participants.map(member => {
           const mine = member.debtor.toLowerCase() === p.wallet.toLowerCase();
