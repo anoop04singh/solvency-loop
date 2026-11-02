@@ -109,7 +109,12 @@ test('service loading has an honest animated status and clears when the request 
   await expect(page.getByText('Checking service availability',{exact:true})).toBeVisible();
   await expect(page.locator('.loading-orbit')).toBeVisible();
   await page.screenshot({path:'test-results/loading-workspace.png'});
+  await page.getByRole('button',{name:'Open account and proof'}).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
   complete();
   await expect(page.getByText('Checking service availability',{exact:true})).toHaveCount(0);
+  await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('heading',{name:'Start with your Sui wallet'})).toBeVisible();
 });

@@ -8,7 +8,7 @@ import { requireWalletMemoryAccess } from '../src/lib/memwal-account';
 import { assertContractInterface, assertProfileLayout, CORE_INTERFACE } from '../src/lib/contract-interface';
 
 export async function verifyMainnetReadiness(log = console.log, options: { infrastructureOnly?: boolean } = {}) {
-  const required = ['TATUM_API_KEY', 'MEMWAL_DELEGATE_PRIVATE_KEY', 'NEXT_PUBLIC_SOLVENCY_PACKAGE_ID', 'NEXT_PUBLIC_SOLVENCY_REGISTRY_ID', 'NEXT_PUBLIC_MEMWAL_AGENT_ID', 'NEXT_PUBLIC_MEMWAL_PACKAGE_ID', 'NEXT_PUBLIC_MEMWAL_REGISTRY_ID', ...(options.infrastructureOnly ? [] : ['VERIFY_WALLET_ADDRESS'])];
+  const required = ['GEMINI_API_KEY', 'TATUM_API_KEY', 'MEMWAL_DELEGATE_PRIVATE_KEY', 'NEXT_PUBLIC_SOLVENCY_PACKAGE_ID', 'NEXT_PUBLIC_SOLVENCY_REGISTRY_ID', 'NEXT_PUBLIC_MEMWAL_AGENT_ID', 'NEXT_PUBLIC_MEMWAL_PACKAGE_ID', 'NEXT_PUBLIC_MEMWAL_REGISTRY_ID', ...(options.infrastructureOnly ? [] : ['VERIFY_WALLET_ADDRESS'])];
   const missing = required.filter(key => !process.env[key]?.trim());
   if (missing.length) throw new Error('Missing configuration: ' + missing.join(', '));
   const { packageId, registryId } = contractConfig(), wallet = options.infrastructureOnly ? '' : requireAddress(process.env.VERIFY_WALLET_ADDRESS, 'Verification wallet');

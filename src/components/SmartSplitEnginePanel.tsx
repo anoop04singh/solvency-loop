@@ -1,5 +1,5 @@
 "use client";
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {Plus, X, Users, Utensils, Wine, ReceiptText, Lock, ArrowRight, WandSparkles, Sparkles, Pencil} from 'lucide-react';
 import {computeExpense,type ExpensePerson,type ExpenseMode,type ExpenseItem} from '@/lib/expense';
 import {formatUsdc,positiveUsdc,usdcToUnits,unitsToUsdc} from '@/lib/money';
@@ -12,7 +12,7 @@ import {StepDialog,ChoiceCards} from './StepDialog';
 import {BillAllocations} from './BillAllocations';
 import type {BillDraft} from '@/lib/bill-draft';
 
-interface Props {wallet:string;contacts:OnChainContact[];memories:RecalledMemory[];disabled:boolean;onInspect?:()=>void;open?:boolean;onOpen?:()=>void;onClose?:()=>void;observations?:VerifiedSettlement[];onRecall:()=>Promise<MemoryInsights>;onSmartSplit:(text:string)=>Promise<MemoryInsights&{draft:BillDraft}>;onCreate:(p:{title:string;totalAmountUsdc:number;shares:{debtorAddress:string;amountUsdc:number;requiresUpfrontEscrow:boolean}[]})=>Promise<boolean>;}
+interface Props {initialDraft?:BillDraft|null;wallet:string;contacts:OnChainContact[];memories:RecalledMemory[];disabled:boolean;onInspect?:()=>void;open?:boolean;onOpen?:()=>void;onClose?:()=>void;observations?:VerifiedSettlement[];onRecall:()=>Promise<MemoryInsights>;onSmartSplit:(text:string)=>Promise<MemoryInsights&{draft:BillDraft}>;onCreate:(p:{title:string;totalAmountUsdc:number;shares:{debtorAddress:string;amountUsdc:number;requiresUpfrontEscrow:boolean}[]})=>Promise<boolean>;}
 export function SmartSplitEnginePanel(p:Props){
  const [opened,setOpened]=useState(false),[step,setStep]=useState('name'),[past,setPast]=useState<string[]>([]);
  const [title,setTitle]=useState(''),[total,setTotal]=useState(''),[mode,setMode]=useState<ExpenseMode|''>(''),[people,setPeople]=useState<ExpensePerson[]>([]);
@@ -22,6 +22,7 @@ export function SmartSplitEnginePanel(p:Props){
  const [smartText,setSmartText]=useState('');
  const [food,setFood]=useState(''),[drinks,setDrinks]=useState(''),[tactile,setTactile]=useState(false);
  const applyDraft=(draft:BillDraft)=>{setTitle(draft.title);setTotal(draft.total);setMode(draft.mode);setPeople(draft.people);setItems(draft.items);setTactile(false);setInsights(null);setError('');};
+ useEffect(()=>{if(p.initialDraft){setTitle(p.initialDraft.title);setTotal(p.initialDraft.total);setMode(p.initialDraft.mode);setPeople(p.initialDraft.people);setItems(p.initialDraft.items);setTactile(false);setInsights(null);setError('');}},[p.initialDraft]);
  const editTactile=(which:'food'|'drinks',value:string)=>{
   const amounts={food:which==='food'?value:food,drinks:which==='drinks'?value:drinks};
   setFood(amounts.food);setDrinks(amounts.drinks);setTactile(true);setMode('items');setInsights(null);

@@ -19,7 +19,7 @@ export async function handleMemoryRequest(req: NextRequest,requiredAction?:Memor
     return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     let message = errorMessage(error);
-    for (const key of [process.env.TATUM_API_KEY, process.env.MEMWAL_DELEGATE_PRIVATE_KEY, process.env.OPENAI_API_KEY]) if (key) message = message.split(key).join('[redacted]');
+    for (const key of [process.env.TATUM_API_KEY, process.env.MEMWAL_DELEGATE_PRIVATE_KEY, process.env.OPENAI_API_KEY,process.env.GEMINI_API_KEY]) if (key) message = message.split(key).join('[redacted]');
     return NextResponse.json({ error: message }, { status: message.includes('not configured') ? 503 : 502, headers: { 'Cache-Control': 'no-store' } });
   }
 }

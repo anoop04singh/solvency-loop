@@ -1,7 +1,7 @@
 "use client";
 import type {ReactNode} from 'react';
 export const primaryViews=['Expenses','Regret','Settlement'] as const;
-export type WorkspaceView=typeof primaryViews[number]|'Savings'|'Memory'|'Account';
+export type WorkspaceView=typeof primaryViews[number]|'Savings'|'Memory'|'Account'|'Agent';
 const labels={Expenses:'Split a Bill',Regret:'Regret Check-In',Settlement:'Settle Shares'} as const;
 export function WorkspaceNavigation({view,onChange,regretCount,settlementCount,shortcuts}:{view:WorkspaceView;onChange:(view:WorkspaceView)=>void;regretCount:number;settlementCount:number;shortcuts?:ReactNode}){
  return <nav className={'workspace-nav '+(view==='Expenses'?'split-navigation':'')} aria-label="Workspace"><div role="tablist" aria-label="Financial workspace">{primaryViews.map((item,index)=>{

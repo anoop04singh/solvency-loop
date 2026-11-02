@@ -1,5 +1,7 @@
 # Using SolvencyLoop
 
+The workspace now opens on **Agent**, powered by Gemini and your owned Walrus memory. Type your actual request, answer any clarification, then review the calculated proposal before approving a wallet transaction or signed memory update. **Split Canvas**, **Cooldown Vault** and **Escrow Desk** preserve the manual features described below. Read [AGENT_GUIDE.md](./AGENT_GUIDE.md) for the chat flow, data sharing and the new server-only `GEMINI_API_KEY` setup. Restored conversation is context; it cannot replay an old action.
+
 ## Your first visit
 
 The home page explains the app and lets you explore **Split**, **Pause** and **Remember** without connecting a wallet. Select **Open app** to enter the workspace at `/app`. An old shared bill link still opens the correct workspace.
@@ -30,7 +32,7 @@ Search contacts by name or wallet in the dropdowns, then explicitly choose the m
 
 ## Create and share a real expense
 
-**Auto-Split** sends your exact description to the signed `/api/smart-split` endpoint, which resolves contacts from your current on-chain profile, synchronizes confirmed history and recalls your own memory. The supported form is `amount at place (amount food, amount drinks) with names`; `for` can replace `at`, `USDC` or `$` may label amounts, and the optional receipt accepts food, drinks/alcohol and other. Use commas or `and` between saved names, optional `@` handles, or a saved canonical wallet. Receipt items must sum exactly to the total, with at most six decimals. Unknown or ambiguous contacts require correction; the app never invents a wallet. This explicit parser needs no AI key. Auto-Split never creates a transaction. Inspect the allocation card and choose **Create Split on Sui Mainnet** for a fresh learning refresh and final review.
+**Auto-Split** sends your exact description to the signed `/api/smart-split` endpoint, which resolves contacts from your current on-chain profile, synchronizes confirmed history and recalls your own memory. The supported form is `amount at place (amount food, amount drinks) with names`; `for` can replace `at`, `USDC` or `$` may label amounts, and the optional receipt accepts food, drinks/alcohol and other. Use commas or `and` between saved names, optional `@` handles, or a saved canonical wallet. Receipt items must sum exactly to the total, with at most six decimals. Unknown or ambiguous contacts require correction; the app never invents a wallet. This manual parser does not call Gemini; use the Agent composer for natural-language requests. Auto-Split never creates a transaction. Inspect the allocation card and choose **Create Split on Sui Mainnet** for a fresh learning refresh and final review.
 
 Alternatively, enter your own Food and Drinks amounts in the empty boxes; their exact sum becomes the bill total. Blank categories are omitted. Drinks are treated as alcohol for saved exclusions. Then choose the bill name and actual participants. The guided editor also supports other receipt categories, selected participants and custom shares. No preset expense, amount or participant is supplied. Switching tabs preserves your entered draft; switching wallets clears it.
 

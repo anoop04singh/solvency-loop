@@ -1,12 +1,12 @@
 # SolvencyLoop
 
-A Next.js 15 App Router application for Sui Mainnet profiles, contact graphs, Circle USDC bill splits, upfront escrow, 24-hour cooldown vaults, and user-owned MemWal accounts with wallet-scoped Walrus memory. There is no application database or local user-state store.
+A Next.js 15 App Router application with a Gemini-led financial workspace, Sui Mainnet profiles, contact graphs, Circle USDC bill splits, upfront escrow, 24-hour cooldown vaults, and user-owned MemWal accounts with wallet-scoped Walrus memory. There is no application database or local user-state store.
 
 **Current state:** the object-factory contract is published on Sui Mainnet (see `move/solvency_loop/Published.toml`). The application provides wallet-owned onboarding, personal contacts, real USDC expenses, payment history, cooldown savings and user-authored memory. No sample contacts, preset bills or memory-seeding action are enabled. See `PRODUCTION_READINESS.md` for verification evidence and remaining wallet-approved checks.
 
 The public landing page at `/` explains the application with original SVG illustrations and Framer Motion interactions. Choose **Open app** to enter `/app`. Existing `/?split=...` bill links redirect to the workspace; new links use `/app?split=...`. Wallet providers are scoped to the workspace so browsing the landing page does not initialize wallet or chain requests.
 
-Both routes use locally bundled Vanta Fog. The workspace follows the supplied Swiss editorial screens with a warm canvas, subtle fog and gentle outcome accents: green for completed actions, yellow for processing/pending confirmation and red for errors or stale account state. It reads the existing operation state and never confirms or authorizes payments. Pause the background using its status pill. Reduced-motion/data-saver preferences, unavailable WebGL and context loss use a static palette; hidden tabs release their renderer. See the [Vanta lifecycle documentation](https://github.com/tengbao/vanta#cleanup) and [Motion accessibility guidance](https://motion.dev/docs/react-accessibility). Presentation styles are local overrides; generated Tatum tokens and the public landing remain untouched.
+The workspace opens on a Gemini + Walrus chat experience following the supplied LLM-native Swiss editorial reference, including its fluid WebGL shader. Exact allocations and eligible actions appear as review cards. The manual screens remain accessible through the workspace switcher, with existing Vanta feedback; the landing retains its original design. Shader/fog presentation supports pause, reduced motion, data saving, hidden tabs and static WebGL fallbacks. Animations never confirm or authorize payments. Generated Tatum tokens remain untouched. See [AGENT_GUIDE.md](./AGENT_GUIDE.md) for configuration, privacy, the coupled Gemini/Walrus request flow and verification limits.
 
 **Access policy:** a wallet-owned MemWal account is mandatory. Users create or reuse that account, authorize the app delegate, then register their profile before the financial dashboard opens. The contract accepts an actual MemWalAccount object and checks its owner and profile link for financial actions. Payments and vaults use only native Circle USDC on Sui Mainnet. SUI is needed for network gas. There is no guest payment, off-chain settlement, card/fiat payment, alternative token, or MemWal-free payment path. Existing-fund recovery still requires the user's genuine linked MemWal account, but works after memory revocation/freezing to avoid trapping funds.
 
@@ -120,6 +120,7 @@ Fill these values in `.env.local`:
 NEXT_PUBLIC_SOLVENCY_PACKAGE_ID=0x...64hex
 NEXT_PUBLIC_SOLVENCY_REGISTRY_ID=0x...64hex
 MEMWAL_DELEGATE_PRIVATE_KEY=your_app_server_delegate_key
+GEMINI_API_KEY=your_google_gemini_api_key
 NEXT_PUBLIC_MEMWAL_AGENT_ID=0x...delegate_public_key_hex
 NEXT_PUBLIC_MEMWAL_PACKAGE_ID=0xe7c16fbea0560e7057e2bf7422feaa4fb313749fc69c9e9092fac7a33b81d7f5
 NEXT_PUBLIC_MEMWAL_REGISTRY_ID=0x8bf82c9e09e36b8d1c38298f68b7cb68e7b8762887e7592add9986d5e9cf199f
@@ -143,6 +144,7 @@ Environment checklist:
 | --- | --- | --- |
 | `TATUM_API_KEY` | Your Tatum key enabled for the Sui Mainnet gateway | Before starting the app |
 | `MEMWAL_DELEGATE_PRIVATE_KEY` | App delegate private key generated below | Before starting the app |
+| `GEMINI_API_KEY` | Private Google AI Studio key with access/quota for `gemini-3.5-flash-lite` | Before starting the app |
 | `NEXT_PUBLIC_MEMWAL_AGENT_ID` | Matching raw public key generated below | Before starting the app |
 | `NEXT_PUBLIC_MEMWAL_PACKAGE_ID`, `NEXT_PUBLIC_MEMWAL_REGISTRY_ID` | Verified public protocol IDs shown above | Before starting the app |
 | `NEXT_PUBLIC_SOLVENCY_PACKAGE_ID`, `NEXT_PUBLIC_SOLVENCY_REGISTRY_ID` | Values from your successful publish transaction | After deployment |

@@ -1,8 +1,18 @@
 # Verification record
 
-Updated 2026-11-01. These checks distinguish local validation, live read-only checks and actions that still require the owner's wallet. They are not an external security audit.
+Updated 2026-11-02. These checks distinguish local validation, live read-only checks and actions that still require the owner's wallet. They are not an external security audit.
 
-## Consumer interface
+## Gemini-led workspace — 2026-11-02
+
+The default workspace is now Agent, with the supplied LLM-native layout, fluid shader, exact allocation cards and review dialogs. Manual Split Canvas, Escrow Desk, Cooldown Vault, check-ins, contacts and memory tools remain available. The public landing and shared presentation sources are unchanged. New inputs and conversations start empty; isolated UI fixtures are absent from production browser bundles.
+
+Google's official `@google/genai` SDK is pinned to 2.32.0 and uses `gemini-3.5-flash-lite` with structured JSON and `store:false`. Every signed chat request verifies the caller's linked owned active authorized MemWal account, recalls Walrus context, loads live chain state, calls Gemini, validates its proposal and waits for a committed conversation blob. Failure of either service returns no executable proposal. The model has no signing or arbitrary transaction tools. Payments, public contact changes and lasting memory updates need separate user review and signatures. Restored proposals cannot replay old actions, and conversation records never qualify as verified repayment evidence.
+
+Local verification passes **88 application tests**, **33 headless Chrome checks**, type checking, lint and production build. Coverage includes actual SDK request serialization using an intercepted provider, wallet/account isolation, missing/decryption/commit failures, exact allocations, foreign-share rejection, mature-vault eligibility, owned thread history, pending work, mobile layout, manual editing and shader lifecycle. A reproduced startup drawer race was fixed and covered across configuration completion. The unsigned `/api/agent` smoke check returns 401. First-load JavaScript is 178 kB for the landing and 423 kB for the workspace.
+
+`GEMINI_API_KEY` was checked for presence only and is **not configured locally**. Add it to ignored `.env.local` and restart the server. Infrastructure readiness checks verify its presence, not paid model access or quota. No live Gemini request, wallet signature, memory write, contract deployment or financial transaction was submitted for this update. Real acceptance still requires the owner's API access and wallet-approved requests. Move source and deployed function shapes are unchanged, so no contract redeployment is required. See [AGENT_GUIDE.md](./AGENT_GUIDE.md) for setup, data sharing, bounded recall/state samples and live acceptance steps.
+
+## Earlier consumer interface verification — 2026-11-01
 
 The workspace now implements all three supplied Swiss editorial exports: the full Split a Bill card, Regret Check-In with cooldown protection, and Settle Shares with the right-side contact/memory drawer. It uses the reference's warm canvas, 896px header/footer, 672px workspace, locally bundled Hanken Grotesk, white cards, inset objects and compact contextual actions. The public landing design is unchanged. The mandatory wallet/MemWal onboarding gate remains intact.
 

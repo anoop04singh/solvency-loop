@@ -1,7 +1,7 @@
 import { usdcToUnits } from './money';
 import { CATEGORIES, requireAddress, type SolvencyNamespaceCategory } from './config';
 import { MERCHANT_CATEGORIES, type MerchantCategory } from './financial-insights';
-export type MemoryAction = 'recall_all' | 'refresh_learning' | 'smart_split' | 'remember' | 'analyze' | 'restore' | 'save_preference' | 'settlement' | 'sync_settlements' | 'record_purchase' | 'regret_checkin';
+export type MemoryAction = 'recall_all' | 'refresh_learning' | 'smart_split' | 'agent_chat' | 'remember' | 'analyze' | 'restore' | 'save_preference' | 'settlement' | 'sync_settlements' | 'record_purchase' | 'regret_checkin';
 export interface SettlementCursor { txDigest: string; eventSeq: string; cursor?: string; }
 export interface MemoryPayload {
   action: MemoryAction; walletAddress: string; category?: SolvencyNamespaceCategory; text?: string; query?: string;
@@ -9,6 +9,7 @@ export interface MemoryPayload {
   excludeAlcohol?:boolean; fundingPolicy?:'always'|'adaptive'|'never';
   merchant?:string; merchantCategory?:MerchantCategory; amountUsdc?:string; purchasedAtMs?:number; timeZone?:string;
   purchaseId?:string; verdict?:'regretted'|'worth_it'; intensity?:number;
+  threadId?:string;
 }
 export interface MemoryEnvelope { payload: MemoryPayload; issuedAt: number; nonce: string; origin: string; signature: string; }
 export interface RecalledMemory { blob_id: string; text: string; distance?: number; namespace: string; category: SolvencyNamespaceCategory; created_at?: string; }
@@ -16,10 +17,16 @@ export function validatePayload(value: unknown): MemoryPayload {
   if (!value || typeof value !== 'object') throw new Error('A memory request is required.');
   const p = value as MemoryPayload;
   requireAddress(p.walletAddress);
-  if (!['recall_all', 'refresh_learning', 'smart_split', 'remember', 'analyze', 'restore', 'save_preference', 'settlement', 'sync_settlements', 'record_purchase', 'regret_checkin'].includes(p.action)) throw new Error('Unsupported memory action.');
+  if (!['recall_all', 'refresh_learning', 'smart_split', 'agent_chat', 'remember', 'analyze', 'restore', 'save_preference', 'settlement', 'sync_settlements', 'record_purchase', 'regret_checkin'].includes(p.action)) throw new Error('Unsupported memory action.');
   if (p.category !== undefined && !CATEGORIES.includes(p.category)) throw new Error('Invalid category.');
   for (const field of [p.text, p.query]) if (field !== undefined && (typeof field !== 'string' || !field.trim() || field.length > 8000)) throw new Error('Memory text/query must contain 1–8000 characters.');
   if (['remember', 'analyze','smart_split'].includes(p.action) && !p.text?.trim()) throw new Error('Memory text is required.');
+  if(p.action==='agent_chat'){
+    if(typeof p.text!=='string'||!p.text.trim()||p.text.length>4000||typeof p.threadId!=='string'||!/^[a-zA-Z0-9-]{16,64}$/.test(p.threadId))throw new Error('A message and valid conversation ID are required.');
+    if(typeof p.timeZone!=='string'||p.timeZone.length>80)throw new Error('A valid time zone is required.');
+    try{new Intl.DateTimeFormat('en-US',{timeZone:p.timeZone});}catch{throw new Error('A valid time zone is required.');}
+    if(/suiprivkey1|\bAIza[0-9A-Za-z_-]{30,}\b/.test(p.text))throw new Error('Keep private keys and API keys out of chat. Configure secrets only on the server.');
+  }
   if (p.action === 'save_preference') {
     requireAddress(p.subjectWallet, 'Contact wallet');
     if (p.subjectWallet === p.walletAddress || typeof p.upfrontAboveUsdc !== 'number') throw new Error('Choose a contact and an upfront funding threshold.');
