@@ -37,11 +37,14 @@ test('legacy bill links redirect while preserving the split ID', async ({ reques
 test('mobile landing and workspace fit narrow screens', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   for (const route of ['/', '/app']) {
+    const setup=route==='/app'?page.waitForResponse(response=>response.url().endsWith('/api/config')):null;
     await page.goto(route);
+    if(setup) { await setup; await expect(page.locator('.loading-state')).toHaveCount(0); }
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
     if (route === '/') await page.screenshot({ path: 'test-results/mobile-landing.png' });
   }
+  await expect(page.getByRole('button',{name:'Connect Wallet',exact:true})).toBeInViewport();
   await page.screenshot({ path: 'test-results/mobile-workspace.png', fullPage: true });
 });
 
@@ -71,9 +74,11 @@ test('Vanta creates one canvas, releases it on pause and unmount, and handles co
   });
   await expect(page.getByText('Static background', { exact: true })).toBeVisible();
   await expect(page.locator('.fog-canvas canvas')).toHaveCount(0);
+  await page.getByRole('button',{name:'Open account and proof'}).click();
   await page.getByRole('link', { name: 'About SolvencyLoop' }).click();
   await expect(page).toHaveURL('/');
-  await expect(page.locator('.app-atmosphere')).toHaveCount(0);
+  await expect(page.locator('.app-atmosphere[data-context="workspace"]')).toHaveCount(0);
+  await expect(page.locator('.app-atmosphere[data-context="landing"]')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 
@@ -94,4 +99,17 @@ test('landing remains readable and actionable without JavaScript', async ({ brow
   await expect(page.getByRole('heading', { name: 'Less money on your mind.' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Make a little room' })).toHaveAttribute('href', '/app');
   await context.close();
+});
+
+test('service loading has an honest animated status and clears when the request completes', async ({ page }) => {
+  let complete:()=>void=()=>{};
+  const pending=new Promise<void>(resolve=>{complete=resolve;});
+  await page.route('**/api/config',async route=>{await pending;await route.fulfill({json:{configured:true,missing:[]}});});
+  await page.goto('/app');
+  await expect(page.getByText('Checking service availability',{exact:true})).toBeVisible();
+  await expect(page.locator('.loading-orbit')).toBeVisible();
+  await page.screenshot({path:'test-results/loading-workspace.png'});
+  complete();
+  await expect(page.getByText('Checking service availability',{exact:true})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Start with your Sui wallet'})).toBeVisible();
 });

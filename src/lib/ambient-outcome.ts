@@ -11,10 +11,10 @@ export function ambientOutcome(state: {
 }
 
 export const ambientPalettes = {
-  neutral: { highlightColor: 0xe3e9e2, midtoneColor: 0xf1f1df, lowlightColor: 0xe6e9ed, baseColor: 0xf8f8f6 },
-  success: { highlightColor: 0xb5e6b1, midtoneColor: 0xd5edd7, lowlightColor: 0xa8d5c1, baseColor: 0xf4f8f1 },
-  pending: { highlightColor: 0xf2d57b, midtoneColor: 0xf3e4b2, lowlightColor: 0xe4d39b, baseColor: 0xfaf8ee },
-  error: { highlightColor: 0xeeb1a9, midtoneColor: 0xf4d4cb, lowlightColor: 0xe9b5b7, baseColor: 0xfcf5f2 },
+  neutral: { highlightColor: 0xa5d6f6, midtoneColor: 0xd4eafc, lowlightColor: 0xb8d8f3, baseColor: 0xf0f7ff },
+  success: { highlightColor: 0xb4dfd6, midtoneColor: 0xd8eced, lowlightColor: 0xb5d6e7, baseColor: 0xf1f8fd },
+  pending: { highlightColor: 0xeadba7, midtoneColor: 0xe2eaf6, lowlightColor: 0xb6d5f0, baseColor: 0xf4f8fd },
+  error: { highlightColor: 0xe4bfc9, midtoneColor: 0xe7e4f4, lowlightColor: 0xbdcee8, baseColor: 0xf7f8fd },
 } satisfies Record<AmbientOutcome, Record<string, number>>;
 
 export const ambientLabels: Record<AmbientOutcome, string> = {

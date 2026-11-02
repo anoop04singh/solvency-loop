@@ -1,38 +1,53 @@
 "use client";
-import { useEffect, useRef } from 'react';
-import { ArrowUpRight, Check, Database, Fingerprint, ShieldCheck, Wallet, X } from 'lucide-react';
-import type { RecalledMemory } from '@/lib/memory-protocol';
-import type { OnChainUserProfile } from '@/lib/onchain-user-manager';
-import type { WalletMemWalAccount } from '@/lib/memwal-account';
-
-interface Props {
-  open: boolean; onClose: () => void; wallet: string; profile: OnChainUserProfile | null;
-  account: WalletMemWalAccount | null; memories: RecalledMemory[]; logs: string[];
-  onAccount: () => void; onMemory: () => void;
+import {useEffect,useRef,useState} from 'react';
+import {ArrowRight,Check,Plus,ShieldCheck,Wallet,X,Pencil,Fingerprint,Trash2} from 'lucide-react';
+import Link from 'next/link';
+import type {RecalledMemory} from '@/lib/memory-protocol';
+import type {OnChainUserProfile} from '@/lib/onchain-user-manager';
+import type {WalletMemWalAccount} from '@/lib/memwal-account';
+import {requireAddress} from '@/lib/config';
+import {formatUsdc} from '@/lib/money';
+import {paymentPreferences} from '@/lib/expense';
+import {memoryRecord} from '@/lib/financial-insights';
+import {useModalScrollLock} from '@/lib/use-modal-scroll-lock';
+import {StepDialog} from './StepDialog';
+import type {FriendInput} from './IdentityAndContactsPanel';
+interface Props {open:boolean;onClose:()=>void;wallet:string;profile:OnChainUserProfile|null;account:WalletMemWalAccount|null;memories:RecalledMemory[];logs:string[];onAccount:()=>void;onMemory:()=>void;onSavings?:()=>void;onRefresh?:()=>void;refreshDisabled?:boolean;disabled?:boolean;onRecall?:()=>void;onSaveContacts?:(friends:FriendInput[])=>Promise<boolean>;}
+function excerpt(memory:RecalledMemory){
+ const rule=memoryRecord(memory.text,'SOLVENCY_RULE_V1');
+ if(rule)return 'Payment preference for '+String(rule.subject).slice(0,8)+'…: '+(rule.excludeAlcohol?'exclude alcohol items; ':'')+String(rule.fundingPolicy||'always')+' funding policy above '+String(rule.upfrontAboveUsdc)+' USDC.';
+ const rating=memoryRecord(memory.text,'SOLVENCY_REGRET_V1');
+ if(rating)return String(rating.merchant)+' · '+(rating.verdict==='worth_it'?'worth it':'regretted '+String(rating.intensity)+'/5')+'. Saved with the original purchase hour and live balance context.';
+ const purchase=memoryRecord(memory.text,'SOLVENCY_PURCHASE_V1');
+ if(purchase)return 'Tracked purchase: '+String(purchase.merchant)+'. Self-reported purchase details for a 48-hour check-in.';
+ const settlement=memoryRecord(memory.text,'SOLVENCY_SETTLEMENT_V1');
+ if(settlement)return 'On-chain settlement observation · transaction '+String(settlement.digest).slice(0,12)+'… · checkpoint #'+String(settlement.checkpoint)+'.';
+ return memory.text.length>230?memory.text.slice(0,230)+'…':memory.text;
 }
-export function ProofDrawer(p: Props) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    if (p.open && !element.open) element.showModal();
-    if (!p.open && element.open) element.close();
-    if (!p.open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previousOverflow; };
-  }, [p.open]);
-  return <dialog ref={dialog} className="proof-drawer" aria-labelledby="proof-title" onClose={p.onClose} onCancel={p.onClose} onClick={e => { if (e.target === e.currentTarget) p.onClose(); }}>
-    <div className="proof-sheet">
-      <header className="proof-header"><div><p className="eyebrow">Behind the balance</p><h2 id="proof-title">Your account. Your proof.</h2></div><button className="icon-button" aria-label="Close account details" onClick={p.onClose}><X size={19}/></button></header>
-      <div className="proof-body">
-        <section className="proof-section"><div className="proof-section-label"><Wallet size={17}/><h3>Connected wallet</h3></div><p className="proof-address">{p.wallet || 'Connect a wallet to see your account.'}</p>{p.wallet && <button className="text-action" onClick={p.onAccount}>Manage profile & contacts <ArrowUpRight size={15}/></button>}</section>
-        <section className="proof-section"><div className="proof-section-label"><ShieldCheck size={17}/><h3>On-chain state</h3></div>{p.profile ? <><p className="proof-check"><Check size={15}/>Read through Tatum · Sui Mainnet</p><dl className="proof-values"><div><dt>Checkpoint</dt><dd>#{p.profile.latestCheckpoint}</dd></div><div><dt>USDC balance</dt><dd>{p.profile.usdcBalance.toLocaleString('en-US',{maximumFractionDigits:6})} USDC</dd></div><div><dt>Profile</dt><dd>{p.profile.isRegisteredOnChain ? 'Registered to your wallet' : 'Not registered yet'}</dd></div></dl>{p.profile.profileId && <p className="proof-address">{p.profile.profileId}</p>}</> : <p className="proof-muted">Account state appears here after your wallet is connected and checked.</p>}</section>
-        <section className="proof-section"><div className="proof-section-label"><Fingerprint size={17}/><h3>Your MemWal account</h3></div>{p.account ? <><p className="proof-address">{p.account.accountId}</p><dl className="proof-values"><div><dt>Account</dt><dd>{p.account.active ? 'Active' : 'Frozen'}</dd></div><div><dt>App access</dt><dd>{p.account.delegateAuthorized ? 'Authorized' : 'Not authorized'}</dd></div></dl></> : <p className="proof-muted">No memory account loaded. Your wallet remains the account owner.</p>}</section>
-        <section className="proof-section"><div className="proof-section-label"><Database size={17}/><h3>Walrus memories <span className="proof-count">{p.memories.length}</span></h3></div><p className="proof-muted">Only memories you have recalled in this session are shown.</p>{!p.memories.length ? <p className="proof-empty">A little blank space, ready for what matters to you.</p> : <div className="proof-memories">{p.memories.map(m => <article key={m.namespace+m.blob_id}><p>{m.text}</p><details><summary>Storage reference</summary><p className="proof-address">{m.blob_id}</p></details></article>)}</div>}{p.wallet && <button className="text-action" onClick={p.onMemory}>Open your memory <ArrowUpRight size={15}/></button>}</section>
-        <details className="proof-section"><summary className="proof-section-label">Recent activity</summary><div className="proof-log">{p.logs.length ? p.logs.map((l,i)=><p key={i}>{l}</p>) : <p>No recent activity.</p>}</div></details>
-      </div>
-      <footer className="proof-footer"><ShieldCheck size={15}/><p>Public chain records. Wallet-controlled access.</p></footer>
-    </div>
-  </dialog>;
+export function ProofDrawer(p:Props){
+ const dialog=useRef<HTMLDialogElement>(null),[draft,setDraft]=useState<FriendInput[]>([]),[flow,setFlow]=useState<'name'|'wallet'|'contact-review'|'save'|null>(null),[editing,setEditing]=useState<number|null>(null),[name,setName]=useState(''),[address,setAddress]=useState(''),[saving,setSaving]=useState(false),[error,setError]=useState('');
+ const contactKey=JSON.stringify(p.profile?.contacts||[]);
+ useModalScrollLock(p.open);
+ useEffect(()=>{const element=dialog.current;if(!element)return;if(p.open&&!element.open)element.showModal();if(!p.open&&element.open)element.close();return()=>{if(element.open)element.close();};},[p.open]);
+ useEffect(()=>{setFlow(null);setError('');if(p.open)setDraft((JSON.parse(contactKey) as {handle:string;walletAddress:string}[]).map(c=>({...c,id:c.walletAddress})));},[p.open,contactKey]);
+ const rules=paymentPreferences(p.memories),changed=JSON.stringify(draft.map(({handle,walletAddress})=>({handle,walletAddress})))!==contactKey;
+ let valid=!!name.trim()&&new TextEncoder().encode(name.trim()).length<=64;
+ if(flow==='wallet'||flow==='contact-review'){try{const wallet=requireAddress(address);valid=valid&&wallet!==p.wallet&&!draft.some((c,i)=>i!==editing&&c.walletAddress===wallet);}catch{valid=false;}}
+ const next=async()=>{
+  if(flow==='name'){setFlow('wallet');return;}if(flow==='wallet'){setFlow('contact-review');return;}
+  if(flow==='contact-review'){const contact={id:editing===null?crypto.randomUUID():draft[editing].id,handle:name.trim(),walletAddress:requireAddress(address)};setDraft(all=>editing===null?[...all,contact]:all.map((c,i)=>i===editing?contact:c));setFlow(null);return;}
+  if(flow==='save'&&p.onSaveContacts){setSaving(true);setError('');try{if(await p.onSaveContacts(draft))setFlow(null);else setError('The contacts update was not confirmed. Check the account message before retrying.');}catch(e){setError((e as Error).message);}finally{setSaving(false);}}
+ };
+ const edit=(index:number|null)=>{setEditing(index);setName(index===null?'':draft[index].handle);setAddress(index===null?'':draft[index].walletAddress);setError('');setFlow('name');};
+ const authorized=!!p.account?.active&&p.account.delegateAuthorized;
+ return <><dialog ref={dialog} className="proof-drawer" aria-labelledby="proof-title" onCancel={e=>{e.preventDefault();if(!saving)p.onClose();}} onClose={p.onClose} onClick={e=>{if(e.target===e.currentTarget&&!saving)p.onClose();}}><div className="proof-sheet"><header className="proof-header"><div><h2 id="proof-title"><i/>On-Chain Setup & Walrus Memory</h2><p>Wallet-owned contacts and encrypted behavioral memory on Sui Mainnet.</p></div><button className="icon-button" aria-label="Close account details" disabled={saving} onClick={p.onClose}><X size={19}/></button></header><div className="proof-body">
+ <section className="proof-section contact-registry"><div className="drawer-section-heading"><h3>Friend Sui Registry</h3><span>{p.profile?.contacts.length||0} Registered Peers</span></div><div className="drawer-profile-summary"><div><span>Primary Handle</span><strong>{p.profile?.handle||'Complete your profile'}</strong></div><div><span>Reserve Floor</span><strong>{p.profile?'$'+formatUsdc(p.profile.safeFloorUsdc)+' USDC':'—'}</strong></div></div>
+ <div className="drawer-contact-list">{draft.map((contact,index)=>{const rule=rules.get(contact.walletAddress);return <div className="drawer-contact" key={contact.id}><div><strong>{contact.handle}</strong><span title={contact.walletAddress}>{contact.walletAddress.slice(0,8)}…{contact.walletAddress.slice(-4)}</span></div>{rule&&<span className={'rule-badge '+(rule.excludeAlcohol?'green':rule.fundingPolicy==='always'?'amber':'blue')}>{rule.excludeAlcohol?'Alcohol Exempt':rule.fundingPolicy==='always'?'Upfront Rule':rule.fundingPolicy==='never'?'Standard':'Adaptive'}</span>}{p.onSaveContacts&&<div className="contact-row-tools"><button className="icon-button" aria-label={'Edit contact '+contact.handle} disabled={p.disabled} onClick={()=>edit(index)}><Pencil size={12}/></button><button className="icon-button" aria-label={'Remove contact '+contact.handle} disabled={p.disabled} onClick={()=>setDraft(all=>all.filter((_,i)=>i!==index))}><Trash2 size={12}/></button></div>}</div>;})}</div>
+ {p.onSaveContacts?<><button className="button-quiet" onClick={()=>edit(null)} disabled={p.disabled||draft.length>=64}><Plus size={13}/>Add contact</button><button className="button primary-commit" disabled={p.disabled||!changed} onClick={()=>{setError('');setFlow('save');}}><Fingerprint size={16}/>Save Contacts On-Chain</button><p className="proof-muted">{changed?'Unsaved edits · review and approve the update in your wallet.':'Contacts are saved in your wallet-owned profile.'}</p></>:<button className="button primary-commit" disabled={!p.wallet} onClick={p.onAccount}><Fingerprint size={16}/>Manage Profile & Contacts</button>}</section>
+ <section className="proof-section"><div className="drawer-section-heading"><h3>Live Walrus Memory Feed</h3><span className="rule-badge blue">{p.memories.length} Loaded</span></div><div className="proof-memories">{p.memories.length?p.memories.map(m=><article key={m.namespace+':'+m.blob_id}><div className="memory-card-label"><span>BLOB {m.blob_id.slice(0,8)}… · {m.category==='social_split_trust'?'SOCIAL':m.category==='habit_regret'?'HABIT':'CASH FLOW'}</span><i/></div><p>{excerpt(m)}</p><details><summary>Exact memory & storage reference</summary><p className="memory-raw">{m.text}</p><p className="proof-address">{m.blob_id}</p><p className="proof-address">{m.namespace}</p></details></article>):<p className="proof-empty">No memories loaded. Recall your own account to inspect committed data.</p>}</div>{p.onRecall&&<button className="button-quiet" disabled={p.disabled} onClick={p.onRecall}>Recall memories<ArrowRight size={13}/></button>}</section>
+ <div className="drawer-checkpoint"><span><ShieldCheck size={18}/>{p.profile?'Tatum Ckpt #'+p.profile.latestCheckpoint:'Connect and refresh your account'}</span><span className="rule-badge blue">{authorized?'MemWal Authorized':'Access Not Ready'}</span></div>
+ <details className="proof-section"><summary className="drawer-section-heading">Wallet & account references</summary><p className="proof-muted">Connected wallet</p><p className="proof-address">{p.wallet||'No wallet connected'}</p><p className="proof-muted">Owned MemWal account</p><p className="proof-address">{p.account?.accountId||'Not loaded'}</p>{p.profile&&<><p className="proof-muted">Owned profile</p><p className="proof-address">{p.profile.profileId||'Not registered'}</p></>}</details>
+ <details className="proof-section"><summary className="drawer-section-heading">Workspace tools</summary><div className="drawer-tools"><button className="button-quiet" onClick={p.onAccount}><Wallet size={14}/>Profile & contacts<ArrowRight size={13}/></button><button className="button-quiet" onClick={p.onMemory}>Memory & preferences<ArrowRight size={13}/></button>{p.onSavings&&<button className="button-quiet" onClick={p.onSavings}>Vaults & protection<ArrowRight size={13}/></button>}{p.onRefresh&&<button className="button-quiet" disabled={p.refreshDisabled} onClick={p.onRefresh}>Refresh account</button>}</div></details><details className="proof-section"><summary className="drawer-section-heading">Recent activity</summary><div className="proof-log">{p.logs.length?p.logs.map((l,i)=><p key={i}>{l}</p>):<p>No recent activity.</p>}</div></details></div><footer className="proof-footer"><Check size={13}/><span>Wallet-controlled access.</span><Link href="/">About SolvencyLoop</Link></footer></div></dialog>
+ <StepDialog open={p.open&&flow!==null} title={flow==='save'?'Save contacts':'Edit contacts'} question={flow==='name'?'What’s their name?':flow==='wallet'?'What’s their Sui wallet?':flow==='save'?'Save these contacts on Sui?':'Add this person to your draft?'} stepKey={flow||'closed'} onClose={()=>setFlow(null)} onBack={flow==='wallet'?()=>setFlow('name'):flow==='contact-review'?()=>setFlow('wallet'):undefined} onNext={()=>void next()} busy={saving} canNext={!p.disabled&&(flow==='save'?changed:valid)} error={error} nextLabel={flow==='save'?'Save with my wallet':flow==='contact-review'?'Apply to contacts':'Continue'} hint={flow==='save'?'Contacts are public on Sui. Your name, reserve and registered MemWal link stay unchanged.':'Contact edits stay in this draft until you choose Save Contacts On-Chain.'}>
+ {flow==='name'&&<label className="flow-field"><span>Contact name</span><input className="field" maxLength={64} value={name} onChange={e=>setName(e.target.value)}/></label>}{flow==='wallet'&&<label className="flow-field"><span>Sui wallet</span><input className="field wallet-field" placeholder="0x…" value={address} spellCheck={false} onChange={e=>setAddress(e.target.value.trim())}/></label>}{flow==='contact-review'&&<dl className="review-facts"><div><dt>Name</dt><dd>{name}</dd></div><div><dt>Wallet</dt><dd>{address}</dd></div></dl>}{flow==='save'&&<div className="review-facts">{draft.length?draft.map(c=><div key={c.id}><strong>{c.handle}</strong><p className="proof-address">{c.walletAddress}</p></div>):<p>Remove all saved contacts from your profile. Existing bills and memories are retained.</p>}</div>}</StepDialog></>;
 }

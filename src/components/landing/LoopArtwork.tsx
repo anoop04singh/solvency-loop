@@ -8,9 +8,9 @@ export function LoopArtwork() {
   const still = !usePresentationMotion();
   return <svg viewBox="0 0 600 600" className="loop-artwork" role="img" aria-label="A flowing loop connects shared expenses, a moment to pause and personal memory">
     <defs>
-      <linearGradient id="loop-ink" x1="100" y1="70" x2="500" y2="540" gradientUnits="userSpaceOnUse"><stop stopColor="#90c4b3"/><stop offset=".46" stopColor="#39785f"/><stop offset="1" stopColor="#c5a25f"/></linearGradient>
-      <linearGradient id="loop-light" x1="100" y1="70" x2="520" y2="500" gradientUnits="userSpaceOnUse"><stop stopColor="#edf6ed"/><stop offset="1" stopColor="#dfc68d"/></linearGradient>
-      <radialGradient id="loop-paper"><stop stopColor="#fff"/><stop offset="1" stopColor="#f1f2e9"/></radialGradient>
+      <linearGradient id="loop-ink" x1="100" y1="70" x2="500" y2="540" gradientUnits="userSpaceOnUse"><stop stopColor="#8dbfe3"/><stop offset=".46" stopColor="#3172a8"/><stop offset="1" stopColor="#9fbfdb"/></linearGradient>
+      <linearGradient id="loop-light" x1="100" y1="70" x2="520" y2="500" gradientUnits="userSpaceOnUse"><stop stopColor="#edf6fd"/><stop offset="1" stopColor="#c4dff3"/></linearGradient>
+      <radialGradient id="loop-paper"><stop stopColor="#fff"/><stop offset="1" stopColor="#edf5fb"/></radialGradient>
       <filter id="loop-shadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="20" stdDeviation="16" floodColor="#315b44" floodOpacity=".12"/></filter>
     </defs>
     <circle cx="300" cy="300" r="255" fill="none" stroke="#dfdfd5" strokeDasharray="2 9"/>
@@ -20,7 +20,7 @@ export function LoopArtwork() {
       <path d="M300 110C460 110 510 190 458 293C410 385 214 292 154 380C89 477 270 529 369 447C466 367 245 266 177 223C92 170 175 110 300 110Z" fill="none" stroke="url(#loop-ink)" strokeWidth="37" strokeLinecap="round"/>
       <motion.path d="M300 110C460 110 510 190 458 293C410 385 214 292 154 380C89 477 270 529 369 447C466 367 245 266 177 223C92 170 175 110 300 110Z" fill="none" stroke="#fff" strokeOpacity=".65" strokeWidth="2" strokeDasharray="8 24" animate={still ? undefined : { strokeDashoffset: [0, -320] }} transition={{ duration: 22, repeat: Infinity, ease: 'linear' }}/>
     </motion.g>
-    <g filter="url(#loop-shadow)"><circle cx="300" cy="300" r="77" fill="url(#loop-paper)" stroke="#fff" strokeWidth="3"/><path d="M318 267C284 250 258 278 282 293L310 310C337 326 307 350 281 333" fill="none" stroke="#183d2b" strokeWidth="13" strokeLinecap="round"/></g>
+    <g filter="url(#loop-shadow)"><circle cx="300" cy="300" r="77" fill="url(#loop-paper)" stroke="#fff" strokeWidth="3"/><path d="M318 267C284 250 258 278 282 293L310 310C337 326 307 350 281 333" fill="none" stroke="#173f61" strokeWidth="13" strokeLinecap="round"/></g>
     <motion.g animate={still ? undefined : { y: [0, -9, 0], rotate: [-5, -2, -5] }} transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }} style={{ originX: '125px', originY: '147px' }}>
       <rect x="30" y="118" width="181" height="58" rx="20" fill="#fff" stroke="#e5e5df"/><circle cx="61" cy="147" r="14" fill="#edf3e8"/><path d="m55 147 4 4 8-9" stroke="#3f6f48" strokeWidth="2" fill="none" strokeLinecap="round"/><text x="85" y="152" fill="#252d26" fontSize="14" fontWeight="600">Shared fairly</text>
     </motion.g>

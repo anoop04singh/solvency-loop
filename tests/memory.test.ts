@@ -48,7 +48,7 @@ test('all memory actions reject denied ownership/delegate checks before construc
   const deps = dependencies(); let created = 0;
   deps.access = async () => { throw new Error('delegate revoked'); };
   deps.client = () => { created++; throw new Error('must not construct'); };
-  for (const action of ['recall_all', 'remember', 'analyze', 'restore', 'save_preference', 'settlement', 'sync_settlements'] as const) {
+  for (const action of ['recall_all', 'refresh_learning', 'smart_split', 'remember', 'analyze', 'restore', 'save_preference', 'settlement', 'sync_settlements', 'record_purchase', 'regret_checkin'] as const) {
     await assert.rejects(executeMemoryRequest({ action, walletAddress: address }, 'nonce', deps), /delegate revoked/);
   }
   assert.equal(created, 0);

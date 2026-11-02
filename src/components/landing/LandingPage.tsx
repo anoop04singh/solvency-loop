@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRef, useState, type ReactNode } from 'react';
 import { FeatureArtwork, LoopArtwork } from './LoopArtwork';
 import { usePresentationMotion } from '@/lib/use-presentation-motion';
+import { OutcomeAtmosphere } from '@/components/OutcomeAtmosphere';
 
 const features = [
   { id: 'split', number: '01', title: 'Share the moment. Split the expense.', short: 'Split clearly', icon: Split, copy: 'Add your people, choose equal or custom shares, and review exactly who owes what. Settle in native USDC, with an upfront deposit when you need one.', note: 'Clear shares. Real payments. No awkward guesswork.' },
@@ -47,6 +48,7 @@ export function LandingPage() {
   const current = features[selected];
 
   return <MotionConfig reducedMotion="user"><div className="landing">
+    <OutcomeAtmosphere outcome="neutral" context="landing"/>
     <a className="skip-link" href="#landing-content">Skip to content</a>
     <header className="landing-header"><Link className="brand" href="/" aria-label="SolvencyLoop home"><span className="brand-mark" aria-hidden="true">S</span><span>SolvencyLoop</span></Link><nav aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#your-control">Your control</a><a href="#questions">Questions</a></nav><Link href="/app" className="landing-nav-cta">Open app <ArrowUpRight size={15} aria-hidden="true"/></Link></header>
 

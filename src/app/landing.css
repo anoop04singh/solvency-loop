@@ -193,3 +193,40 @@
  .landing-footer > span { font-size:8px;line-height:1.8; }
 }
 @media(prefers-reduced-motion:reduce) { .landing * { scroll-behavior:auto!important; } }
+
+/* The latest visual pass uses a continuous sky canvas on both routes. */
+.landing { --landing-green:#346e9f;--landing-mint:#e1effb;--landing-ink:#17334c;position:relative;isolation:isolate; }
+.landing > main,.landing > .landing-footer { position:relative;z-index:1; }
+.landing-header { background:rgba(246,251,255,.88);border-color:#dfedf8; }
+.landing-nav-cta { border-color:#d0e2f0; }
+.living-dot { background:#6298c0;box-shadow:0 0 0 4px #e3effa; }
+.hero-accent svg { color:#a2c5e2; }
+.hero-description,.hero-footnote,.landing-kicker,.landing-text-link { color:#5b778e; }
+.hero-scroll { border-color:#d4e5f2;color:#64829a; }
+.hero-scroll svg { color:#497da5; }
+.art-caption { color:#6c8aa1; }
+.landing-principles { background:rgba(227,241,252,.7);border-color:#d7e8f5;color:#4e728e; }
+.landing-principles svg { color:#4a83b0; }
+.story-heading h2 span { color:#6f98b7; }
+.story-heading > p:last-child,.feature-detail p { color:#5f7c93; }
+.story-selector > button { color:#6c8ba2; }
+.story-selector > button[aria-pressed="true"] { background:#dfedf9;color:#255b83; }
+.feature-number,.feature-indicator,.feature-note { color:#5686ac; }
+.story-art { background:#e4f0fa;border-color:#d2e4f3; }
+.landing-ownership { background:#1b3d59; }
+.landing-ownership .landing-kicker { color:#add1ed; }
+.ownership-line { color:#bedcf2; }
+.ownership-line span,.ownership-grid { border-color:#42647f; }
+.ownership-intro,.ownership-grid p { color:#c4d9e9; }
+.ownership-grid svg,.ownership-fineprint { color:#adcbe1; }
+.start-intro > p:not(.landing-kicker),.start-steps p,.faq-list details p { color:#5f7c93; }
+.start-steps li,.faq-list,.faq-list details { border-color:#d4e5f2; }
+.start-steps li > span { border-color:#d0e3f2;color:#668faa; }
+.start-steps li > svg,.faq-list summary svg { color:#6b99bb; }
+.landing-final { background:rgba(221,238,251,.82); }
+.final-spark { background:#f1f8ff;border-color:#c5e0f3;color:#6896b9; }
+.landing-final h2 span { color:#6b9cbe; }
+.landing-final > div > p:not(.landing-kicker) { color:#5e809a; }
+.final-contour { color:#bdd8ec; }
+.landing-footer { padding-bottom:94px; }
+.landing-footer > p,.landing-footer > span { color:#6c8aa2;border-color:#d6e6f3; }

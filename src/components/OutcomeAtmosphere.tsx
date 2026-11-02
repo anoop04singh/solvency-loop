@@ -11,7 +11,7 @@ const mixColor = (a: number, b: number, progress: number) => [16, 8, 0].reduce((
   color | Math.round(((a >> shift) & 255) + (((b >> shift) & 255) - ((a >> shift) & 255)) * progress) << shift, 0);
 
 /** A decorative subscriber to existing UI feedback. It never produces application outcomes. */
-export function OutcomeAtmosphere({ outcome }: { outcome: AmbientOutcome }) {
+export function OutcomeAtmosphere({ outcome, context = 'workspace' }: { outcome: AmbientOutcome; context?: 'workspace' | 'landing' }) {
   const host = useRef<HTMLDivElement>(null);
   const effect = useRef<FogEffect | null>(null);
   const palette = useRef<Palette>(ambientPalettes[outcome]);
@@ -98,13 +98,13 @@ export function OutcomeAtmosphere({ outcome }: { outcome: AmbientOutcome }) {
   }, [outcome, reducedMotion, paused, visible, saveData]);
 
   return <>
-    <div className="app-atmosphere" data-outcome={outcome} data-renderer={reducedMotion || paused || !visible || saveData ? 'static' : mode} aria-hidden="true">
+    <div className="app-atmosphere" data-context={context} data-outcome={outcome} data-renderer={reducedMotion || paused || !visible || saveData ? 'static' : mode} aria-hidden="true">
       <div ref={host} className="fog-canvas"/>
       <div className="fog-wash"/>
     </div>
     <div className="ambient-status" data-outcome={outcome}>
       <span className="ambient-dot" aria-hidden="true"/>
-      <span>{ambientLabels[outcome]}</span>
+      <span>{context === 'landing' ? 'Calm background' : ambientLabels[outcome]}</span>
       {reducedMotion || saveData ? <span className="ambient-motion-note">{reducedMotion ? 'Reduced motion' : 'Data saver'}</span>
         : mode === 'unavailable' ? <span className="ambient-motion-note">Static background</span>
           : <button aria-label={paused ? 'Animate background' : 'Pause background'} aria-pressed={paused} onClick={() => setPaused(value => !value)}>

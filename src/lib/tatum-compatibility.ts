@@ -4,6 +4,7 @@ import { ObjectError, type SuiClientTypes } from '@mysten/sui/client';
 import { bcs } from '@mysten/sui/bcs';
 import { deriveDynamicFieldID, fromBase58, fromBase64, normalizeSuiAddress } from '@mysten/sui/utils';
 import { requestTatumGraphql, TATUM_GRAPHQL_URL } from './tatum-request';
+import {tatumPageSize} from './tatum-pagination';
 
 function jsonFields(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(jsonFields);
@@ -44,6 +45,16 @@ export function createGraphqlCompatibilityClient(): SuiJsonRpcClient {
   const gql = new SuiGraphQLClient({ network:'mainnet', url: browser ? '/api/tatum-rpc' : TATUM_GRAPHQL_URL,
     fetch: async (input, init) => browser ? fetch(input, { ...init, cache:'no-store' }) : requestTatumGraphql(JSON.parse(String(init?.body)), init?.signal || undefined) });
   const core = gql.core;
+  // Guard Core calls too: transaction gas resolution and MemWal use this API
+  // directly rather than going through the legacy-compatible facade.
+  const listCoins=core.listCoins.bind(core),listBalances=core.listBalances.bind(core),listOwnedObjects=core.listOwnedObjects.bind(core),listEvents=core.listEvents.bind(core),listTransactions=core.listTransactions.bind(core);
+  Object.assign(core,{
+    listCoins:(options:SuiClientTypes.ListCoinsOptions)=>listCoins({...options,limit:tatumPageSize(options.limit)}),
+    listBalances:(options:SuiClientTypes.ListBalancesOptions)=>listBalances({...options,limit:tatumPageSize(options.limit)}),
+    listOwnedObjects:<Include extends SuiClientTypes.ObjectInclude>(options:SuiClientTypes.ListOwnedObjectsOptions<Include>)=>listOwnedObjects({...options,limit:tatumPageSize(options.limit)}),
+    listEvents:(options:SuiClientTypes.ListEventsOptions)=>listEvents({...options,limit:tatumPageSize(options.limit)}),
+    listTransactions:<Include extends SuiClientTypes.TransactionInclude>(options:SuiClientTypes.ListTransactionsOptions<Include>)=>listTransactions({...options,limit:tatumPageSize(options.limit)}),
+  });
   const client = new SuiJsonRpcClient({ network:'mainnet', transport: new JsonRpcHTTPTransport({ url:'/api/tatum-rpc', fetch: async () => { throw new Error('Legacy JSON-RPC is disabled. Use the supported Tatum GraphQL client.'); } }) });
   async function query<T>(source: string, variables: Record<string,unknown> = {}): Promise<T> {
     const r = await gql.query<T,Record<string,unknown>>({query:source,variables});
@@ -95,11 +106,12 @@ export function createGraphqlCompatibilityClient(): SuiJsonRpcClient {
     getCoins: async ({owner,coinType,cursor,limit}:{owner:string;coinType?:string;cursor?:string;limit?:number}) => {
       const p=await core.listCoins({owner,coinType,cursor,limit});return {data:p.objects.map(o=>({coinObjectId:o.objectId,balance:o.balance,version:o.version,digest:o.digest,coinType:o.type})),hasNextPage:p.hasNextPage,nextCursor:p.cursor};
     },
-    getOwnedObjects: async ({owner,filter,cursor}:{owner:string;filter?:{StructType?:string};cursor?:string}) => {const p=await core.listOwnedObjects({owner,type:filter?.StructType,cursor,include:{json:true}});return {data:p.objects.map(legacyObject),hasNextPage:p.hasNextPage,nextCursor:p.cursor};},
+    getOwnedObjects: async ({owner,filter,cursor,limit}:{owner:string;filter?:{StructType?:string};cursor?:string;limit?:number}) => {const p=await core.listOwnedObjects({owner,type:filter?.StructType,cursor,limit,include:{json:true}});return {data:p.objects.map(legacyObject),hasNextPage:p.hasNextPage,nextCursor:p.cursor};},
     getCoinMetadata: async ({coinType}:{coinType:string}) => (await core.getCoinMetadata({coinType})).coinMetadata,
     queryEvents: async ({query:q,cursor,limit,order}:{query:{MoveEventType:string};cursor?:LegacyCursor;limit?:number;order?:string}) => {
       if(cursor&&!cursor.cursor)throw new Error('Refresh event history to start a new GraphQL pagination cursor.');
-      const p=await core.listEvents({filter:{eventType:q.MoveEventType},limit:limit||50,order:order==='ascending'?'ascending':'descending',...(cursor?.cursor?{cursor:cursor.cursor}:{})});
+      const descending=order!=='ascending';
+      const p=await core.listEvents({filter:{eventType:q.MoveEventType},limit:limit??50,order:descending?'descending':'ascending',...(cursor?.cursor?(descending?{before:cursor.cursor}:{after:cursor.cursor}):{})});
       const data=p.events.map(e=>({id:{txDigest:e.transactionDigest,eventSeq:String(e.eventIndex)},type:e.eventType,parsedJson:e.json}));const last=data.at(-1);
       return {data,hasNextPage:p.hasNextPage,nextCursor:p.hasNextPage&&last?{...last.id,cursor:p.endCursor}:null};
     },

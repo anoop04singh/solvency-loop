@@ -7,6 +7,7 @@ import { contractConfig, requireAddress, SUI_MAINNET_USDC_TYPE } from './config'
 import { positiveUsdc, usdcToUnits, unitsToUsdc } from './money';
 import { fetchWalletMemWalAccount } from './memwal-account';
 import { onboardingStatus } from './onboarding';
+import {TATUM_GRAPHQL_MAX_PAGE_SIZE} from './tatum-pagination';
 
 export interface OnChainContact { walletAddress: string; handle: string; }
 export interface OnChainUserProfile {
@@ -158,7 +159,7 @@ async function paymentCoins(owner: string, required: bigint, tx: Transaction) {
   requireAddress(owner);
   const chosen: string[] = []; let total = 0n, cursor: string | null = null;
   do {
-    const page = await tatumSuiClient.getCoins({ owner, coinType: SUI_MAINNET_USDC_TYPE, cursor, limit: 100 });
+    const page = await tatumSuiClient.getCoins({ owner, coinType: SUI_MAINNET_USDC_TYPE, cursor, limit: TATUM_GRAPHQL_MAX_PAGE_SIZE });
     for (const c of page.data) { chosen.push(c.coinObjectId); total += BigInt(c.balance); if (total >= required) break; }
     if (total >= required || !page.hasNextPage) break;
     if (!page.nextCursor || page.nextCursor === cursor) throw new Error('Coin pagination did not advance.');
@@ -175,6 +176,24 @@ export async function buildSettleSplitShareTx(p: { payerAddress: string; splitOb
   const access = await transactionAccess(p.payerAddress);
   const coin = await paymentCoins(p.payerAddress, units, tx), [payment] = tx.splitCoins(coin, [tx.pure.u64(units)]);
   tx.moveCall({ target: packageId + '::core::' + (p.upfront ? 'fund_split_share' : 'settle_split_share'), typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [tx.object(access.profile.profileId), tx.object(access.accountId), tx.object(requireAddress(p.splitObjectId, 'Split ID')), payment, tx.object('0x6')] });
+  return tx;
+}
+export const MAX_SETTLEMENT_BATCH=20;
+export async function buildSettleSplitSharesTx(p:{payerAddress:string;splitObjectIds:string[]}) {
+  const wallet=requireAddress(p.payerAddress),ids=p.splitObjectIds.map(id=>requireAddress(id,'Bill ID'));
+  if(!ids.length||ids.length>MAX_SETTLEMENT_BATCH||new Set(ids).size!==ids.length)throw new Error('Choose 1–20 distinct bills for a single settlement.');
+  const access=await transactionAccess(wallet),bills=await Promise.all(ids.map(id=>fetchGroupSplitByIdViaTatum(wallet,id)));
+  const shares=bills.map(bill=>{
+    const share=bill.participants.find(member=>member.debtor===wallet);
+    if(!bill.isActive||bill.isCancelled||!share||share.isSettled)throw new Error('Every selected bill must have an active, unpaid share belonging to your wallet. Refresh and review the batch.');
+    return {id:bill.splitId,amount:positiveUsdc(share.amountOwedUsdc)};
+  });
+  const tx=new Transaction();tx.setSender(wallet);
+  const coin=await paymentCoins(wallet,shares.reduce((n,s)=>n+s.amount,0n),tx);
+  for(const share of shares){
+    const [payment]=tx.splitCoins(coin,[tx.pure.u64(share.amount)]);
+    tx.moveCall({target:access.packageId+'::core::settle_split_share',typeArguments:[SUI_MAINNET_USDC_TYPE],arguments:[tx.object(access.profile.profileId),tx.object(access.accountId),tx.object(share.id),payment,tx.object('0x6')]});
+  }
   return tx;
 }
 export async function buildSplitActionTx(walletAddress: string, splitId: string, action: 'activate_group_split' | 'cancel_group_split' | 'refund_escrow') {
