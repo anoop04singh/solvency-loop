@@ -27,18 +27,27 @@ async function startBill(page:Page,total='60.000001'){
  await page.getByLabel('Total bill · USDC',{exact:true}).fill(total);await next(page);await page.getByRole('radio',{name:'Equally, including me',exact:true}).check();
 }
 test('guided equal split requires explicit contact choice, fresh recall and final review',async({page,request})=>{
- await openForms(page,request);await startBill(page);await next(page);
+ await openForms(page,request);
+ await page.getByRole('button',{name:'Create an expense',exact:true}).click();
+ await page.getByLabel('Expense name',{exact:true}).fill('Fixture bill');
+ await page.getByRole('combobox',{name:'Bill category',exact:true}).selectOption('travel');
+ await next(page);
+ await page.getByLabel('Total bill · USDC',{exact:true}).fill('60.000001');
+ await next(page);
+ await page.getByRole('radio',{name:'Equally, including me',exact:true}).check();
+ await next(page);
  const contact=page.getByRole('combobox',{name:'Add a saved contact'});await contact.fill('cas');
  await expect(page.getByRole('option')).toHaveCount(1);expect(await page.evaluate(()=>window.__formResult)).toBeUndefined();
  await contact.press('ArrowDown');await contact.press('Enter');
  await next(page);await expect(page.getByRole('heading',{name:'Does anyone need an upfront deposit?'})).toBeVisible();await next(page);
  await page.getByRole('button',{name:'Recall & review'}).click();
+ await expect(page.locator('.share-review-total')).toContainText('Travel & transport');
  await expect(page.locator('.share-line').filter({hasText:'Casey'})).toContainText('30.00 USDC');
  await expect(page.locator('.share-line').filter({hasText:'You'})).toContainText('30.000001 USDC');
  expect(await page.evaluate(()=>window.__recalls)).toBe(1);expect(await page.evaluate(()=>window.__formResult)).toBeUndefined();
  await page.screenshot({path:'test-results/desktop-split-review.png',fullPage:true});
  await page.getByRole('button',{name:'Create expense',exact:true}).click();
- expect(await page.evaluate(()=>window.__formResult)).toMatchObject({title:'Fixture bill',totalAmountUsdc:60.000001,shares:[{debtorAddress:'0x'+'2'.padStart(64,'0'),amountUsdc:30,requiresUpfrontEscrow:false}]});
+ expect(await page.evaluate(()=>window.__formResult)).toMatchObject({title:'Fixture bill',category:'travel',totalAmountUsdc:60.000001,shares:[{debtorAddress:'0x'+'2'.padStart(64,'0'),amountUsdc:30,requiresUpfrontEscrow:false}]});
 });
 test('receipt wizard shows recalled alcohol exclusion and keeps exact amounts for approval',async({page,request})=>{
  await openForms(page,request);await startBill(page,'16.50');

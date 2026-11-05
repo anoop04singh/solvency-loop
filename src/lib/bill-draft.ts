@@ -1,8 +1,9 @@
 import {requireAddress} from './config';
+import {inferBillCategory,type BillCategory} from './bill-category';
 import {positiveUsdc,usdcToUnits} from './money';
 import type {ExpenseItem,ExpenseMode,ExpensePerson} from './expense';
 import type {OnChainContact,OnChainGroupSplit} from './onchain-user-manager';
-export interface BillDraft {title:string;total:string;mode:ExpenseMode;people:ExpensePerson[];items:ExpenseItem[];}
+export interface BillDraft {title:string;total:string;mode:ExpenseMode;people:ExpensePerson[];items:ExpenseItem[];conventionId?:string;category?:BillCategory;}
 /** Explicit financial syntax only; unresolved names and ambiguous amounts require user edits. */
 export function parseBillDraft(text:string,contacts:OnChainContact[],owner:string):BillDraft {
  if(text.length>2000)throw new Error('Keep the bill description below 2,000 characters.');
@@ -26,9 +27,10 @@ export function parseBillDraft(text:string,contacts:OnChainContact[],owner:strin
  }):[];
  if(items.length>30)throw new Error('Use at most 30 receipt items.');
  if(items.length&&items.reduce((n,item)=>n+usdcToUnits(item.amount),0n)!==usdcToUnits(total))throw new Error('Receipt items must add up exactly to the bill total.');
- return {title:title.trim(),total,people,items,mode:items.length?'items':'equal'};
+ const category=inferBillCategory(title)??(items.some(item=>item.kind==='food'||item.kind==='alcohol')?'dining':undefined);
+ return {title:title.trim(),total,people,items,mode:items.length?'items':'equal',...(category?{category}:{})};
 }
 export function repeatBillDraft(bill:OnChainGroupSplit,owner:string,contacts:OnChainContact[]):BillDraft {
  if(requireAddress(owner)!==bill.creator)throw new Error('Only repeat bills your wallet created.');
- return {title:bill.title,total:String(bill.totalBillUsdc),mode:'custom',items:[],people:bill.participants.map((p,i)=>({id:'repeat-person-'+i,handle:contacts.find(c=>c.walletAddress===p.debtor)?.handle||p.debtor.slice(0,8)+'…'+p.debtor.slice(-4),walletAddress:requireAddress(p.debtor),customAmount:String(p.amountOwedUsdc),upfront:false}))};
+ return {title:bill.title,...(bill.category?{category:bill.category}:{}),total:String(bill.totalBillUsdc),mode:'custom',items:[],people:bill.participants.map((p,i)=>({id:'repeat-person-'+i,handle:contacts.find(c=>c.walletAddress===p.debtor)?.handle||p.debtor.slice(0,8)+'…'+p.debtor.slice(-4),walletAddress:requireAddress(p.debtor),customAmount:String(p.amountOwedUsdc),upfront:false}))};
 }

@@ -6,8 +6,11 @@ import { tatumSuiClient } from '../src/lib/tatum-rpc-client';
 import { fetchFullUserStateViaTatum } from '../src/lib/onchain-user-manager';
 import { requireWalletMemoryAccess } from '../src/lib/memwal-account';
 import { assertContractInterface, assertProfileLayout, CORE_INTERFACE } from '../src/lib/contract-interface';
+import {verifyAutopilotInterface} from '../src/lib/autopilot-interface';
+import {autopilotConfig,autopilotObject} from '../src/lib/autopilot-onchain';
+import {getAgentKeypair} from '../src/lib/agent-executor';
 
-export async function verifyMainnetReadiness(log = console.log, options: { infrastructureOnly?: boolean } = {}) {
+export async function verifyMainnetReadiness(log = console.log, options: { infrastructureOnly?: boolean;autopilot?:boolean } = {}) {
   const required = ['GEMINI_API_KEY', 'TATUM_API_KEY', 'MEMWAL_DELEGATE_PRIVATE_KEY', 'NEXT_PUBLIC_SOLVENCY_PACKAGE_ID', 'NEXT_PUBLIC_SOLVENCY_REGISTRY_ID', 'NEXT_PUBLIC_MEMWAL_AGENT_ID', 'NEXT_PUBLIC_MEMWAL_PACKAGE_ID', 'NEXT_PUBLIC_MEMWAL_REGISTRY_ID', ...(options.infrastructureOnly ? [] : ['VERIFY_WALLET_ADDRESS'])];
   const missing = required.filter(key => !process.env[key]?.trim());
   if (missing.length) throw new Error('Missing configuration: ' + missing.join(', '));
@@ -30,6 +33,7 @@ export async function verifyMainnetReadiness(log = console.log, options: { infra
     assertContractInterface(name, fn, packageId, process.env.NEXT_PUBLIC_MEMWAL_PACKAGE_ID!);
   }
   log('[PASS] Authenticated Tatum Mainnet checkpoint #' + checkpoint + ', shared registry, contract functions, and Circle USDC.');
+  if(options.autopilot){const c=autopilotConfig();if(!c)throw Error('Autopilot deployment settings are missing.');if(getAgentKeypair().toSuiAddress()!==c.executor)throw Error('The executor private key does not match its public address.');await verifyAutopilotInterface();await autopilotObject(c.directoryId,'AgentDirectory');log('[PASS] Exact autopilot entry-point signatures, shared directory and executor address. No signing or execution.');}
   const memwalUrl = process.env.MEMWAL_SERVER_URL || 'https://relayer.memory.walrus.xyz';
   if (new URL(memwalUrl).protocol !== 'https:') throw new Error('Use an HTTPS Mainnet MemWal relayer.');
   const configResponse = await fetch(memwalUrl.replace(/\/$/, '') + '/config', { signal: AbortSignal.timeout(15_000) });
@@ -68,5 +72,5 @@ export async function verifyMainnetReadiness(log = console.log, options: { infra
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   config({ path: '.env.local', quiet: true }); config({ quiet: true });
-  verifyMainnetReadiness(console.log, { infrastructureOnly: process.argv.includes('--infrastructure-only') }).catch(error => { console.error('[FAIL]', error instanceof Error ? error.message : error); process.exitCode = 1; });
+  verifyMainnetReadiness(console.log, { infrastructureOnly: process.argv.includes('--infrastructure-only'),autopilot:process.argv.includes('--autopilot') }).catch(error => { console.error('[FAIL]', error instanceof Error ? error.message : error); process.exitCode = 1; });
 }

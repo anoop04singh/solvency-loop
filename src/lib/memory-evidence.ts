@@ -4,7 +4,7 @@ import type { RecalledMemory } from './memory-protocol';
 import type { MemoryDependencies } from './memory-service';
 
 /** Recalled text alone is never proof. Re-read successful package events and split creation times. */
-export async function verifyRecalledSettlements(memories:RecalledMemory[],wallet:string,deps:MemoryDependencies) {
+export async function verifyRecalledSettlements(memories:RecalledMemory[],wallet:string,deps:Pick<MemoryDependencies,'transaction'|'object'>) {
   const {packageId}=contractConfig(),candidates=new Map<string,Record<string,unknown>>();
   for(const memory of memories){if(memory.category!=='social_split_trust')continue;const r=memoryRecord(memory.text,'SOLVENCY_SETTLEMENT_V1');
     if(!r||typeof r.digest!=='string'||!/^[1-9A-HJ-NP-Za-km-z]{40,50}$/.test(r.digest)||r.recipient!==wallet||typeof r.subject!=='string'||typeof r.splitId!=='string')continue;

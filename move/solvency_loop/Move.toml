@@ -4,7 +4,8 @@ edition = "2024"
 implicit-dependencies = false
 
 [dependencies]
-# Official mainnet-v1.72.2 release, matching the tested Sui CLI.
-std = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "85b460a63fd76a15672bbe4820bde6db78a3cfb8" }
-sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "85b460a63fd76a15672bbe4820bde6db78a3cfb8" }
+# Official mainnet-v1.82.3 framework and primary CLI/VM. The isolated 1.72.2
+# dependency-only verifier remains available through npm run move:verify-deps.
+std = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "bf4073918ed33cfa0b09c500658fa116a774bcfd" }
+sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "bf4073918ed33cfa0b09c500658fa116a774bcfd" }
 memwal = { local = "../vendor/memwal" }

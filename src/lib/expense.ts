@@ -2,6 +2,7 @@ import { requireAddress } from './config';
 import { allocateUnits, positiveUsdc, unitsToUsdc, usdcToUnits } from './money';
 import { settlementSummary, type VerifiedSettlement } from './financial-insights';
 import type { RecalledMemory } from './memory-protocol';
+import type {PublicSocialPreference} from './autopilot-types';
 
 export interface ExpensePerson { id:string; handle:string; walletAddress:string; customAmount:string; upfront:boolean; }
 export type ExpenseMode='equal'|'items'|'custom';
@@ -10,7 +11,7 @@ export interface ExpenseShare { handle:string; walletAddress:string; amountUsdc:
 export function paymentPreferences(memories:RecalledMemory[]) {
   const rules=new Map<string,{threshold:bigint;updated:number;excludeAlcohol:boolean;fundingPolicy:'always'|'adaptive'|'never'}>();
   for(const memory of memories){
-    if(memory.category!=='social_split_trust'||/^Demo\b/i.test(memory.text))continue;
+    if(memory.namespace.endsWith('_observations')||memory.category!=='social_split_trust'||/^Demo\b/i.test(memory.text))continue;
     const match=memory.text.match(/SOLVENCY_RULE_V1 (\{[^\n]+?\})/);if(!match)continue;
     try{
       const r=JSON.parse(match[1]) as {subject:string;upfrontAboveUsdc?:number;updatedAtMs?:number;excludeAlcohol?:boolean;fundingPolicy?:'always'|'adaptive'|'never'};
@@ -21,7 +22,7 @@ export function paymentPreferences(memories:RecalledMemory[]) {
     }catch{/* Unstructured notes and invalid rules never become financial instructions. */}
   }return rules;
 }
-export function computeExpense(owner:string,people:ExpensePerson[],totalAmount:string,mode:ExpenseMode,memories:RecalledMemory[],usePreferences:boolean,context:{items?:ExpenseItem[];observations?:VerifiedSettlement[]}={}) {
+export function computeExpense(owner:string,people:ExpensePerson[],totalAmount:string,mode:ExpenseMode,memories:RecalledMemory[],usePreferences:boolean,context:{items?:ExpenseItem[];observations?:VerifiedSettlement[];publicPreferences?:PublicSocialPreference[]}={}) {
   const wallet=requireAddress(owner),addresses=people.map(p=>requireAddress(p.walletAddress,'Participant wallet'));
   if(!people.length||people.length>64)throw new Error('Add between 1 and 64 other participants.');
   if(new Set([wallet,...addresses]).size!==people.length+1)throw new Error('Each participant needs a different wallet, separate from yours.');
@@ -38,7 +39,7 @@ export function computeExpense(owner:string,people:ExpensePerson[],totalAmount:s
       const chosen=item.wallets?item.wallets.map(address=>requireAddress(address)):[...all];
       if(new Set(chosen).size!==chosen.length||chosen.some(address=>!all.includes(address)))throw new Error('An item can only be shared by people on this bill.');
       const eligible=chosen.filter(address=>{
-        const omit=item.kind==='alcohol'&&!!preferences.get(address)?.excludeAlcohol;
+        const omit=item.kind==='alcohol'&&(!!preferences.get(address)?.excludeAlcohol||!!context.publicPreferences?.some(p=>p.active&&p.owner===address&&p.excludeAlcohol));
         if(omit&&excluded.has(address))excluded.get(address)!.push(item.label);
         return !omit;
       }).sort();

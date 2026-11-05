@@ -1,9 +1,22 @@
 /* The supplied LLM-native Swiss editorial mockup, scoped to the application. */
+.llm-experience .agent-session-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 0;font-size:12px;color:var(--agent-muted)}
+.llm-experience .agent-session-controls>div,.llm-experience .agent-mode-choice{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.llm-experience .agent-session-controls>div:first-child{gap:6px}
+.llm-experience .agent-command-controls{margin:16px 8px 0}.llm-experience .agent-mode-choice{justify-content:space-between;font-size:12px}.llm-experience .agent-mode-choice .checkbox-row{margin:0;font-size:12px}
+.llm-experience .agent-budget-card{background:var(--product-paper);padding:24px;border-radius:12px;box-shadow:0 6px 18px -10px rgba(0,0,0,.15)}.llm-experience .agent-budget-card>strong{display:block;font-size:36px;line-height:42px;letter-spacing:-.03em;margin:14px 0;font-variant-numeric:tabular-nums}.llm-experience .agent-budget-card>strong small{font-size:14px;font-weight:400;letter-spacing:0}
+.llm-experience .autopilot-panel>header h2{font-size:30px;line-height:36px;font-weight:700;letter-spacing:-.03em}.llm-experience .autopilot-panel .purchase-row{gap:16px;align-items:center}.llm-experience .autopilot-panel h3{font-size:20px;font-weight:600}.llm-experience .autopilot-panel .purchase-row p{font-size:12px;overflow-wrap:anywhere}.llm-experience .autopilot-panel .product-actions{flex-wrap:wrap}
+@media(max-width:700px){.llm-experience .agent-session-controls{gap:10px;font-size:11px}.llm-experience .agent-session-controls>div{gap:12px}.llm-experience .agent-budget-card{padding:20px}.llm-experience .agent-budget-card>strong{font-size:30px;line-height:36px}.llm-experience .autopilot-panel .purchase-row{flex-wrap:wrap}.llm-experience .autopilot-panel .purchase-row>div{min-width:0;flex-basis:100%}}
 .llm-experience{--agent-ink:#1c1b1b;--agent-muted:#3d4a42;--agent-stone:#ebe7e7;--agent-paper:#fcf9f8;--agent-green:#006948;--agent-blue:#0051d5;--product-canvas:#fcf9f8;background:var(--agent-paper)}
 .llm-experience .agent-topbar{position:sticky;top:0;z-index:30;background:rgba(252,249,248,.94);backdrop-filter:blur(20px);box-shadow:0 1px 8px rgba(0,0,0,.04)}
 .llm-experience .agent-header-inner{height:64px;width:calc(100% - 48px);max-width:1360px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:24px}
 .llm-experience .agent-header-left,.llm-experience .agent-header-actions{display:flex;align-items:center;gap:24px;min-width:0}
 .llm-experience .agent-header-actions{gap:16px;flex-shrink:0}
+.llm-experience .agent-header-actions .wallet-control button{
+ max-width:none!important;min-width:max-content;white-space:nowrap;overflow:visible;
+}
+.llm-experience .agent-header-actions .wallet-control button span{white-space:nowrap;word-break:normal}
+@media(max-width:380px){
+ .llm-experience .agent-header-actions .agent-memory-status{font-size:0;gap:0;padding:8px}
+}
 .llm-experience .agent-brand{display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:20px;font-weight:500;letter-spacing:-.04em}
 .llm-experience .agent-brand>span{display:grid;place-items:center;width:28px;height:28px;border-radius:2px;background:var(--agent-green);color:#fff}
 .llm-experience .agent-header-left nav{display:flex;align-items:center;gap:16px}

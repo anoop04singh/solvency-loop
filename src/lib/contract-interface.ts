@@ -46,7 +46,7 @@ function expectedParameters(name: keyof typeof CORE_INTERFACE, packageId: string
   };
   return [...signatures[name], ref(struct('0x2', 'tx_context', 'TxContext'), true)];
 }
-function canonicalType(type: SuiMoveNormalizedType): string {
+export function canonicalType(type: SuiMoveNormalizedType): string {
   if (typeof type === 'string') return type;
   if ('Reference' in type) return '&' + canonicalType(type.Reference);
   if ('MutableReference' in type) return '&mut ' + canonicalType(type.MutableReference);

@@ -10,8 +10,8 @@ export const categoryLabels: Record<MerchantCategory,string> = {food_delivery:'F
 export interface PurchaseMemory { id:string; owner:string; merchant:string; category:MerchantCategory; amountUnits:string; purchasedAtMs:number; timeZone:string; localHour:number; recordedAtMs:number; checkpoint:string; balanceUnits:string; }
 export interface RegretMemory extends PurchaseMemory { verdict:'regretted'|'worth_it'; intensity:number; checkedAtMs:number; }
 export interface CashflowMemory { purchaseId:string; owner:string; localHour:number; regretScore:number; balanceUnits:string; floorUnits:string; checkedAtMs:number; checkpoint:string; }
-export interface VerifiedSettlement { digest:string; eventSeq:string; splitId:string; payer:string; recipient:string; amountUnits:string; createdAtMs:number; settledAtMs:number; lagMs:number; checkpoint:string; }
-export interface MemoryInsights { memories:RecalledMemory[]; verifiedSettlements:VerifiedSettlement[]; rejectedEvidenceCount:number; }
+export interface VerifiedSettlement { digest:string; eventSeq:string; splitId:string; payer:string; recipient:string; amountUnits:string; createdAtMs:number; settledAtMs:number; lagMs:number; checkpoint:string; network?:boolean; }
+export interface MemoryInsights { memories:RecalledMemory[]; verifiedSettlements:VerifiedSettlement[]; rejectedEvidenceCount:number; publicPreferences?:import('./autopilot-types').PublicSocialPreference[]; }
 export function memoryRecord(text:string, marker:string):Record<string,unknown>|null {
   const index=text.indexOf(marker+' ');if(index<0||/^Demo\b/i.test(text))return null;
   try { const value=JSON.parse(text.slice(index+marker.length+1));return value&&typeof value==='object'&&!Array.isArray(value)?value:null; } catch { return null; }
@@ -36,7 +36,7 @@ export function regretMemories(memories:RecalledMemory[],wallet:string):RegretMe
 }
 export function settlementSummary(observations:VerifiedSettlement[],wallet:string,subject:string,threshold=40) {
   const cutoff=usdcToUnits(threshold),unique=new Map<string,VerifiedSettlement>();
-  for(const event of observations){if(event.recipient!==wallet||event.payer!==subject||!units(event.amountUnits)||BigInt(event.amountUnits)<=cutoff||!timestamp(event.createdAtMs)||!timestamp(event.settledAtMs)||event.settledAtMs<event.createdAtMs||event.lagMs!==event.settledAtMs-event.createdAtMs)continue;unique.set(event.digest+':'+event.eventSeq,event);}
+  for(const event of observations){if((event.recipient!==wallet&&event.network!==true)||event.payer!==subject||!units(event.amountUnits)||BigInt(event.amountUnits)<=cutoff||!timestamp(event.createdAtMs)||!timestamp(event.settledAtMs)||event.settledAtMs<event.createdAtMs||event.lagMs!==event.settledAtMs-event.createdAtMs)continue;unique.set(event.digest+':'+event.eventSeq,event);}
   const recent=[...unique.values()].sort((a,b)=>b.settledAtMs-a.settledAtMs).slice(0,5);
   const averageLagMs=recent.length?recent.reduce((n,e)=>n+e.lagMs,0)/recent.length:0;
   return {count:recent.length,averageLagMs,onTimeRate:recent.length?Math.round(100*recent.filter(e=>e.lagMs<=DAY_MS).length/recent.length):null,

@@ -1,6 +1,6 @@
 # Using SolvencyLoop
 
-The workspace now opens on **Agent**, powered by Gemini and your owned Walrus memory. Type your actual request, answer any clarification, then review the calculated proposal before approving a wallet transaction or signed memory update. **Split Canvas**, **Cooldown Vault** and **Escrow Desk** preserve the manual features described below. Read [AGENT_GUIDE.md](./AGENT_GUIDE.md) for the chat flow, data sharing and the new server-only `GEMINI_API_KEY` setup. Restored conversation is context; it cannot replay an old action.
+The workspace opens on **Agent**, powered by Gemini and your owned Walrus memory. Type your actual request and answer any clarification. Without funded agent authority, review the proposal before approving a wallet transaction or signed memory update. Optional **Autopilot** adds separately consented quiet memory, a limited USDC budget, incoming-share handling and shared preferences/conventions. See [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md) for setup and controls. **Draft only** retains review even with an allowance. **Split Canvas**, **Cooldown Vault** and **Escrow Desk** preserve the manual features described below. Read [AGENT_GUIDE.md](./AGENT_GUIDE.md) for data sharing and the server-only `GEMINI_API_KEY` setup. Restored conversation is context; it cannot replay an old action.
 
 ## Your first visit
 
@@ -12,7 +12,7 @@ The home page explains the app and lets you explore **Split**, **Pause** and **R
 
 The workspace opens only when profile ownership, the active MemWal account, its app authorization and the profile link match. The app never needs your wallet private key. Profile information, contacts and financial records are public on Sui.
 
-Once onboarding is ready, your wallet receives one personal-message request to synchronize confirmed payment history and recall your own memory. Approve it to calculate your personal spending suggestion. Zero memories is a valid starting point. A canceled or failed request leaves the suggestion unavailable and shows a retry; the app never substitutes example data or repeatedly opens prompts. Wallet changes start a separate session. See [LIFECYCLE.md](./LIFECYCLE.md) for the complete creator-to-counterparty loop.
+Once onboarding is ready, choose quiet memory or individual approvals before the first learning refresh. Quiet memory uses one explicit wallet grant for up to one hour; individual mode signs each request. Learning synchronizes confirmed payment history and recalls your own memory to calculate a personal spending suggestion. Zero memories is a valid starting point. A canceled or failed request leaves the suggestion unavailable and shows a retry; the app never substitutes example data or repeatedly opens prompts. Wallet changes start a separate session. See [LIFECYCLE.md](./LIFECYCLE.md) for the creator-to-counterparty loop and [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md) for the optional delegated path.
 
 ## Your workspace
 

@@ -1,0 +1,1 @@
+export async function autopilotRequestId(wallet:string,nonce:string){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('SolvencyLoop agent request v1:'+wallet+':'+nonce));return Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');}

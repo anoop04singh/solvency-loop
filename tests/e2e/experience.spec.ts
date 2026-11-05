@@ -7,14 +7,24 @@ test('landing explains each feature, exposes details and opens mandatory onboard
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('request', request => { if (/api\/(tatum-rpc|memory)/.test(request.url())) chainCalls.push(request.url()); });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Less money on your mind.' })).toBeVisible();
-  await page.screenshot({ path: 'test-results/desktop-landing.png' });
-  await page.getByRole('button', { name: /Remember what matters/ }).click();
-  await expect(page.getByRole('heading', { name: 'Keep the lesson. Leave the mental load.' })).toBeVisible();
-  await page.getByRole('button', { name: /Pause thoughtfully/ }).click();
-  await expect(page.getByRole('img', { name: 'A 24-hour pause surrounds protected funds' })).toBeVisible();
-  await page.getByText('Does SolvencyLoop move money for me?', { exact: true }).click();
-  await expect(page.getByText('Saving a preference or a note does not authorize a payment.', { exact: false })).toBeVisible();
+  const headline = page.getByRole('heading', { name: 'Smart money that remembers.' });
+  await expect(headline).toBeVisible();
+  await expect(headline).toHaveCSS('font-family', /Hanken Grotesk/);
+  const shader = page.locator('.landing-hero-shader');
+  await expect(shader).toHaveAttribute('data-ready', 'true');
+  await page.getByRole('button', { name: 'Pause motion', exact: true }).click();
+  await expect(shader).toHaveCount(0);
+  await page.getByRole('button', { name: 'Resume motion', exact: true }).click();
+  await expect(shader).toHaveAttribute('data-ready', 'true');
+  await page.evaluate(() => document.fonts.ready);
+  await page.screenshot({ path: 'test-results/desktop-landing.png', animations: 'disabled' });
+  const preview = page.getByRole('region', { name: 'Workflow preview' });
+  await preview.getByRole('button', { name: 'Purchase reflection' }).click();
+  await expect(preview.getByText('Wait 48 hours', { exact: true })).toBeVisible();
+  await preview.getByRole('button', { name: 'Cooldown vault' }).click();
+  await expect(preview.getByText('Withdraw', { exact: true })).toBeVisible();
+  await page.getByText('Data and approvals', { exact: true }).click();
+  await expect(page.getByText('account-wide memory access', { exact: false })).toBeVisible();
   expect(chainCalls).toEqual([]);
   await page.getByRole('link', { name: 'Open app', exact: false }).first().click();
   await expect(page).toHaveURL(/\/app$/);
@@ -42,7 +52,18 @@ test('mobile landing and workspace fit narrow screens', async ({ page }) => {
     if(setup) { await setup; await expect(page.locator('.loading-state')).toHaveCount(0); }
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
-    if (route === '/') await page.screenshot({ path: 'test-results/mobile-landing.png' });
+    if (route === '/') {
+      await page.evaluate(() => document.fonts.ready);
+      await page.screenshot({ path: 'test-results/mobile-landing.png', animations: 'disabled' });
+      const chapters = page.getByRole('region', { name: 'SolvencyLoop feature chapters' });
+      await chapters.press('ArrowRight');
+      await expect(page.getByRole('heading', { name: 'Carry useful context forward' })).toBeInViewport({ ratio: .8 });
+      const nextChapter = page.getByRole('button', { name: 'Next chapter' });
+      await nextChapter.click();
+      await expect(nextChapter).toHaveAttribute('aria-disabled', 'true');
+      await chapters.scrollIntoViewIfNeeded();
+      await expect(page.getByRole('heading', { name: 'Choose a 24-hour cooldown' })).toBeInViewport({ ratio: .8 });
+    }
   }
   await expect(page.getByRole('button',{name:'Connect Wallet',exact:true})).toBeInViewport();
   await page.screenshot({ path: 'test-results/mobile-workspace.png', fullPage: true });
@@ -88,16 +109,20 @@ test('reduced motion uses the static palette and retains feature controls', asyn
   await expect(page.getByText('Reduced motion', { exact: true })).toBeVisible();
   await expect(page.locator('.fog-canvas canvas')).toHaveCount(0);
   await page.goto('/');
-  await page.getByRole('button', { name: /Remember what matters/ }).click();
-  await expect(page.getByRole('heading', { name: 'Keep the lesson. Leave the mental load.' })).toBeVisible();
+  await expect(page.locator('.landing-hero-shader')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Purchase reflection' }).click();
+  await expect(page.getByText('Wait 48 hours', { exact: true })).toBeVisible();
 });
 
 test('landing remains readable and actionable without JavaScript', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
   await page.goto(baseURL!);
-  await expect(page.getByRole('heading', { name: 'Less money on your mind.' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Make a little room' })).toHaveAttribute('href', '/app');
+  await expect(page.getByRole('heading', { name: 'Smart money that remembers.' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Launch web app', exact: true })).toHaveAttribute('href', '/app');
+  await page.getByText('Data and approvals', { exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('account-wide memory access', { exact: false })).toBeVisible();
   await context.close();
 });
 

@@ -2,6 +2,8 @@
 
 A Next.js 15 App Router application with a Gemini-led financial workspace, Sui Mainnet profiles, contact graphs, Circle USDC bill splits, upfront escrow, 24-hour cooldown vaults, and user-owned MemWal accounts with wallet-scoped Walrus memory. There is no application database or local user-state store.
 
+The latest extension adds opt-in quiet memory, a funded and revocable USDC agent allowance, event-driven incoming-share handling, confirmed-receipt learning, public self-published preferences and unanimously approved group conventions. **Existing installations need a compatible package upgrade and a new shared agent directory before funded automation can be enabled.** Follow [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md) for the exact Sui CLI upgrade, new environment variables, consent boundaries and event-delivery setup. Original core package/registry IDs stay unchanged; the new extension is disabled by default. Manual screens remain available.
+
 **Current state:** the object-factory contract is published on Sui Mainnet (see `move/solvency_loop/Published.toml`). The application provides wallet-owned onboarding, personal contacts, real USDC expenses, payment history, cooldown savings and user-authored memory. No sample contacts, preset bills or memory-seeding action are enabled. See `PRODUCTION_READINESS.md` for verification evidence and remaining wallet-approved checks.
 
 The public landing page at `/` explains the application with original SVG illustrations and Framer Motion interactions. Choose **Open app** to enter `/app`. Existing `/?split=...` bill links redirect to the workspace; new links use `/app?split=...`. Wallet providers are scoped to the workspace so browsing the landing page does not initialize wallet or chain requests.
@@ -34,7 +36,7 @@ The current deployment uses this object layout. For a new deployment, publish th
 
 ## Local setup
 
-Requirements: Node.js 22+, npm, and **Sui CLI 1.72.2** for the pinned framework/toolchain. The Move manifest pins the official `mainnet-v1.72.2` source commit and `Move.lock` is checked in. Review both together when upgrading the CLI/framework.
+Requirements: Node.js 22+, npm, and the pinned project Sui tools installed by `npm run sui:install`. Build, test and deployment use official **Sui 1.82.3** and its matching framework revision. An isolated **1.72.2** CLI supplies the dependency-only verification interface removed from newer releases. Both Move manifests pin `bf4073918ed33cfa0b09c500658fa116a774bcfd`; lockfiles are checked in. This setup passed live Mainnet dependency source verification and all 47 Move tests on 2026-11-03. See [MOVE_DEPLOYMENT.md](./MOVE_DEPLOYMENT.md).
 
 The Move package also depends on the existing Mainnet MemWal contract. Its official production source is pinned in `move/vendor/memwal` with its license and provenance. Only test-only fixtures are added; this protocol package is not republished with SolvencyLoop. The root manifest uses the current package format with explicit pinned `std`/`sui` dependencies. The vendor's `Published.toml` supplies the existing Mainnet address; legacy `[addresses]` tables are intentionally absent. [CONTRACT_VERIFICATION.md](./CONTRACT_VERIFICATION.md) records the contract/application checks and their limits.
 
@@ -54,61 +56,22 @@ The lockfile also applies compatible security overrides for PostCSS, nanoid, and
 
 ## Deploy the Move contract to Sui Mainnet
 
-These commands are for you to execute. Publishing spends SUI gas. No deployment or signed transaction has been performed by the coding agent.
+Follow [MOVE_DEPLOYMENT.md](./MOVE_DEPLOYMENT.md) for the current, tested CLI flow, including fresh publication. Use [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md) when upgrading the existing package and retaining its profiles/bills.
 
-1. Open PowerShell in the project and confirm your installed Sui CLI matches the pinned **1.72.2** baseline:
+Install the pinned project tools and use project commands so an older global CLI cannot select the wrong VM:
 
-   ```powershell
-   Set-Location "C:\Users\singa\OneDrive\Documents\ChatGPT\solvency-loop"
-   sui --version
-   ```
+```powershell
+npm.cmd run sui:install
+npm.cmd run sui -- --version
+npm.cmd run move:build
+npm.cmd run move:test
+npm.cmd run move:verify-bundle
+npm.cmd run move:verify-deps
+```
 
-   Deployment uses the Sui CLI directly against Sui's [official Mainnet endpoint](https://docs.sui.io/develop/sui-architecture/networks). No Tatum bridge or Tatum API key is required for these CLI steps. The application's own RPC transport still requires its Tatum key later.
+Build/test/deployment use official Sui **1.82.3** and framework commit `bf4073918ed33cfa0b09c500658fa116a774bcfd`. Dependency-only verification uses an isolated **1.72.2** verifier because the current CLI removed its old `verify-source --verify-deps --skip-source` interface. Project publish/upgrade commands run this real preflight automatically. The global CLI is preserved. These CLI steps use Sui's direct Mainnet endpoint without a Tatum bridge.
 
-2. Run the checks before publishing. Stop any Next.js development server before `npm.cmd run check`, because it includes a production build:
-
-   ```powershell
-   npm.cmd run check
-   npm.cmd run move:build
-   npm.cmd run move:test
-   npm.cmd run move:verify-bundle
-   ```
-
-3. Configure a direct Mainnet CLI environment. Run `new-env` only once; if the alias already exists, confirm its URL with `sui client envs` and reuse it:
-
-   ```powershell
-   sui client envs
-   sui client new-env --alias solvency-direct-mainnet --rpc https://fullnode.mainnet.sui.io:443
-   sui client switch --env solvency-direct-mainnet
-   ```
-
-4. Check the network, wallet and available SUI gas:
-
-   ```powershell
-   sui client chain-identifier
-   sui client active-address
-   sui client gas
-   ```
-
-   Confirm the chain identifier is **`35834a8a`**, the Mainnet wallet is yours, and it has SUI for gas. Use `sui client addresses` to list configured wallets and `sui client switch --address YOUR_DEPLOYER_ADDRESS` if you need to select another one. If no wallet is configured, set up/import it yourself using the Sui CLI or your wallet; never place a wallet private key in a public environment variable or this repository. This package links to existing Mainnet MemWal objects and must be published to Mainnet with these dependency bindings.
-
-5. Verify the dependency source with the direct Mainnet CLI, then simulate publication. Run these commands individually, and only continue to the publish command after verification and the dry run succeed:
-
-   ```powershell
-   sui client verify-source .\move\solvency_loop --build-env mainnet --verify-deps --skip-source
-   sui client publish .\move\solvency_loop --build-env mainnet --verify-deps --dry-run --json
-   sui client publish .\move\solvency_loop --build-env mainnet --verify-deps --json
-   ```
-
-   The first command verifies on-chain dependencies while skipping the unpublished root package. The CLI estimates gas when no explicit budget is supplied. Keep dependency verification enabled; if a source/dependency mismatch is reported, stop and review the pinned dependency instead of skipping verification. Do not use `--with-unpublished-dependencies`: MemWal is already deployed. The module's `init` function automatically creates and shares one `SolvencyRegistry` during publication. The coding agent has checked the installed CLI's flags but has not executed these Mainnet verification/publication commands or signed a transaction.
-
-6. Copy the IDs from the successful publication's `objectChanges`:
-
-   - The entry with `type: "published"` contains `packageId` → `NEXT_PUBLIC_SOLVENCY_PACKAGE_ID`.
-   - The created shared object with `objectType: "<packageId>::core::SolvencyRegistry"` contains `objectId` → `NEXT_PUBLIC_SOLVENCY_REGISTRY_ID`.
-   - Keep the resulting UpgradeCap under your control.
-
-   Add the two IDs to `.env.local`. The CLI also writes publication metadata to `Published.toml`; retain it with the lockfile. After publication, verify the root package with `sui client verify-source .\move\solvency_loop --build-env mainnet --verify-deps`. Complete the app's Tatum/MemWal environment configuration below and restart it. The web app continues to route through its own authenticated Tatum transport/proxy, independently of your CLI environment. The unused `rpc:bridge` helper is optional legacy tooling and is not part of this deployment procedure.
+A fresh publication creates a new package/registry and does not migrate existing objects. It also requires one `autopilot::create_agent_directory` call. Keep old deployment records for existing funds, and keep the external MemWal binding unchanged. See the deployment guide for output-to-environment mappings, source verification, gas and activation.
 
 ## Configure Walrus memory and wallets
 
@@ -178,7 +141,7 @@ Both MemWal factories inject the Tatum client. Pinned MemWal 0.1.11 does not nat
 
 Follow [USER_GUIDE.md](./USER_GUIDE.md) for real onboarding, personal contacts, expenses, memory and savings. The demo seeding action and named-contact defaults have been removed. No stored memories are required to complete onboarding.
 
-The workspace includes reviewed itemized splits with alcohol exclusions, adaptive deposit suggestions from reverified settlement events, 48-hour purchase check-ins, and a labelled spending-room/shield suggestion using personal regret and live cash-flow context. Guided popup steps precede writes and wallet actions. See the user guide for sample limits and the exact decision rules. These changes use the deployed contract's existing shares, escrow flags and 24-hour vault interface; no contract redeployment or new environment variables are required.
+The workspace includes reviewed itemized splits with alcohol exclusions, adaptive deposit suggestions from reverified settlement events, 48-hour purchase check-ins, and a labelled spending-room/shield suggestion using personal regret and live cash-flow context. Guided popup steps precede manual writes and wallet actions. These manual flows use the existing core interface. Optional funded agent automation uses the new extension, deployment settings and explicit consent described in [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md).
 
 The application uses the supported GraphQL path on the fixed Tatum Mainnet gateway. Browser requests still use /api/tatum-rpc. See [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) for the reproduced 404 cause, request pacing, Retry-After handling and verification evidence.
 

@@ -1,7 +1,9 @@
+import {createHash} from 'node:crypto';
+import {autopilotRequestId} from './autopilot-request';
 import { CATEGORIES, contractConfig, getWalletNamespace, SUI_MAINNET_USDC_TYPE } from './config';
 import { requireWalletMemoryAccess } from './memwal-account';
 import { createScopedMemWalClient } from './walrus-tatum-memory';
-import { fetchFullUserStateViaTatum,fetchGroupSplitPageViaTatum,fetchOwnedCooldownVaultsViaTatum,type OnChainGroupSplit,type OnChainCooldownVault } from './onchain-user-manager';
+import { fetchFullUserStateViaTatum,fetchGroupSplitPageViaTatum,fetchGroupSplitByIdViaTatum,fetchOwnedCooldownVaultsViaTatum,type OnChainGroupSplit,type OnChainCooldownVault } from './onchain-user-manager';
 import { tatumSuiClient } from './tatum-rpc-client';
 import type { MemoryPayload, RecalledMemory } from './memory-protocol';
 import type { SolvencyNamespaceCategory } from './config';
@@ -11,20 +13,31 @@ import { verifyRecalledSettlements } from './memory-evidence';
 import type {MemoryResponse} from './memory-api';
 import {parseBillDraft} from './bill-draft';
 import {createAgentTurn} from './agent-service';
+import {loadSocialContext,type SocialContext} from './social-memory';
+import {LEARNED_MARKER,LEARNED_QUERY,learnedNamespace,learningKey,latestLearnedPreferences,type LearningChoice} from './agent-learning';
+import {commitMemoryBatch} from './memory-batch';
+import {autopilotConfig,fetchAgentAllowance,fetchAutopilotState} from './autopilot-onchain';
+import {executeAutonomousAction,learnAgentReceipt} from './agent-executor';
 type MemoryClient = ReturnType<typeof createScopedMemWalClient>;
 export interface MemoryDependencies {
-  client: (wallet: string, category: SolvencyNamespaceCategory, accountId: string) => Pick<MemoryClient, 'recall' | 'rememberAndWait' | 'analyzeAndWait' | 'restore'>;
+  client: (wallet: string, category: SolvencyNamespaceCategory, accountId: string) => Pick<MemoryClient, 'recall' | 'rememberAndWait' | 'analyzeAndWait' | 'restore'> & Partial<Pick<MemoryClient,'rememberBulkAndWait'>>;
   access: typeof requireWalletMemoryAccess;
   state: typeof fetchFullUserStateViaTatum;
   transaction: typeof tatumSuiClient.getTransactionBlock;
   object: typeof tatumSuiClient.getObject;
   events: typeof tatumSuiClient.queryEvents;
-  agent?:{generate:(context:unknown)=>Promise<unknown>;splits:()=>Promise<OnChainGroupSplit[]>;vaults:()=>Promise<OnChainCooldownVault[]>};
+  agent?:{generate:(context:unknown)=>Promise<unknown>;splits:()=>Promise<OnChainGroupSplit[]>;vaults:()=>Promise<OnChainCooldownVault[]>;allowance?:()=>Promise<import('./autopilot-types').AgentAllowance|null>};
+  social?:(state:Awaited<ReturnType<MemoryDependencies['state']>>,client:ReturnType<MemoryDependencies['client']>,publish:boolean)=>Promise<SocialContext>;
+  autonomy?:typeof executeAutonomousAction;
 }
 const defaults: MemoryDependencies = { client: createScopedMemWalClient, state: fetchFullUserStateViaTatum,
-  access: requireWalletMemoryAccess, transaction: p => tatumSuiClient.getTransactionBlock(p), object: p => tatumSuiClient.getObject(p), events: p => tatumSuiClient.queryEvents(p) };
-export async function executeMemoryRequest(p: MemoryPayload, nonce: string, deps?: MemoryDependencies):Promise<MemoryResponse> {
-  if (deps) return executeRequestWithDeps(p, nonce, deps);
+  access: requireWalletMemoryAccess, transaction: p => tatumSuiClient.getTransactionBlock(p), object: p => tatumSuiClient.getObject(p), events: p => tatumSuiClient.queryEvents(p),social:(state,client,publish)=>{if(!client.rememberBulkAndWait)throw Error('MemWal bulk writes are required.');return loadSocialContext(state,{recall:client.recall.bind(client),rememberBulkAndWait:(p,o)=>client.rememberBulkAndWait!(p,o)},publish);},autonomy:executeAutonomousAction };
+interface MemoryWork {
+  issuedAt?:number;
+  background?:{expiresAt:number;schedule:(task:()=>Promise<void>)=>void};
+}
+export async function executeMemoryRequest(p: MemoryPayload, nonce: string, deps?: MemoryDependencies, work:MemoryWork={}):Promise<MemoryResponse> {
+  if (deps) return executeRequestWithDeps(p, nonce, deps, work);
   const pool = new Map<string, MemoryClient>();
   const scoped = { ...defaults, client: (wallet: string, category: SolvencyNamespaceCategory, accountId: string) => {
     const key = accountId + ':' + wallet + ':' + category;
@@ -32,28 +45,72 @@ export async function executeMemoryRequest(p: MemoryPayload, nonce: string, deps
     if (!client) { client = createScopedMemWalClient(wallet, category, accountId); pool.set(key, client); }
     return client;
   } };
-  try { return await executeRequestWithDeps(p, nonce, scoped); }
+  try { return await executeRequestWithDeps(p, nonce, scoped, {...work,backgroundClient:createScopedMemWalClient}); }
   finally { for (const client of pool.values()) client.destroy(); }
 }
-async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: MemoryDependencies) {
+async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: MemoryDependencies, work:MemoryWork & {backgroundClient?:typeof createScopedMemWalClient}={}) {
   const wallet = p.walletAddress.toLowerCase(), category = p.category || 'social_split_trust';
   const state = await deps.state(wallet); // Live checkpoint anchors every operation.
   if (!state.isRegisteredOnChain || !state.profileId || state.wallet !== wallet) throw new Error('Register your wallet-owned on-chain profile first.');
+  if(p.sessionAccountId&&p.sessionAccountId!==state.memwalAccountId)throw Error('Your linked MemWal account changed. Authorize a new memory session.');
   const account = await deps.access(wallet, state.memwalAccountId);
   const scopedClient = (cat: SolvencyNamespaceCategory) => deps.client(wallet, cat, account.accountId);
   const anchor = { checkpoint: state.latestCheckpoint, gateway: 'https://sui-mainnet.gateway.tatum.io', usdcBalance: state.usdcBalance };
+  const learned=learnedNamespace(wallet);
+  const recallLearning=async (client:ReturnType<MemoryDependencies['client']>)=>{
+    const result=await client.recall({query:LEARNED_QUERY,namespace:learned,topK:100,sort:'recent'});
+    if(result.dropped_count)throw Error('Learned preferences could not be decrypted. Restore the payment preferences index before continuing.');
+    return result.results.filter(m=>m.text.startsWith(LEARNED_MARKER+' ')).map(m=>({...m,namespace:learned,category:'social_split_trust' as const}));
+  };
+  const writeLearning=async (client:ReturnType<MemoryDependencies['client']>,choices:LearningChoice[],expiresAt=Infinity)=>{
+    const current=new Map(latestLearnedPreferences(await recallLearning(client),wallet).map(row=>[learningKey(row),row]));
+    const updatedAtMs=work.issuedAt??Date.now();
+    const changes=choices.filter(choice=>{
+      const previous=current.get(learningKey(choice));
+      return (!previous||previous.updatedAtMs<=updatedAtMs)&&(previous?.value??null)!==choice.value;
+    });
+    if(!changes.length||Date.now()>=expiresAt)return [];
+    if(!client.rememberBulkAndWait)throw Error('MemWal bulk writes are required.');
+    const items=changes.map(choice=>({text:LEARNED_MARKER+' '+JSON.stringify({...choice,owner:wallet,updatedAtMs,revision:nonce}),namespace:learned,category:'social_split_trust' as const}));
+    return commitMemoryBatch({rememberBulkAndWait:(items,options)=>client.rememberBulkAndWait!(items,options)},items,'learned:'+nonce+':'+createHash('sha256').update(JSON.stringify(items)).digest('hex'));
+  };
   const recallAll = async (committed: RecalledMemory[] = []) => {
-    const results = await Promise.all(CATEGORIES.map(async cat => {
-      const queries={social_split_trust:'SOLVENCY_RULE_V1 SOLVENCY_SETTLEMENT_V1 SOLVENCY_AGENT_V1 conversations alcohol exclusions payment preferences settlement history',habit_regret:'SOLVENCY_PURCHASE_V1 SOLVENCY_REGRET_V1 purchase check-in regret reflections',cashflow_elasticity:'SOLVENCY_CASHFLOW_V1 balance liquidity cashflow local time regret'};
-      const recalled = await scopedClient(cat).recall({ query: p.query || queries[cat], topK: 100 });
-      if (recalled.dropped_count) throw new Error('Some Walrus memories could not be decrypted. Restore the namespace before relying on its rules.');
-      return recalled.results.map(m => ({ ...m, namespace: getWalletNamespace(wallet, cat), category: cat }));
-    }));
-    const memories=[...new Map([...results.flat(),...committed].map(m=>[m.namespace+':'+m.blob_id,m])).values()];
-    return { memories, ...(await verifyRecalledSettlements(memories,wallet,deps)), tatumAnchor: anchor };
+    const socialClient=scopedClient('social_split_trust');
+    const [social,learning,results]=await Promise.all([
+      deps.social?.(state,socialClient,p.action!=='agent_chat'),
+      recallLearning(socialClient),
+      Promise.all(CATEGORIES.map(async cat => {
+        const queries={social_split_trust:'SOLVENCY_RULE_V1 SOLVENCY_SETTLEMENT_V1 SOLVENCY_AGENT_V1 conversations alcohol exclusions payment preferences settlement history',habit_regret:'SOLVENCY_PURCHASE_V1 SOLVENCY_REGRET_V1 purchase check-in regret reflections',cashflow_elasticity:'SOLVENCY_CASHFLOW_V1 balance liquidity cashflow local time regret'};
+        const client=cat==='social_split_trust'?socialClient:scopedClient(cat);
+        const recalled = await client.recall({ query: p.query || queries[cat], topK: 100 });
+        if (recalled.dropped_count) throw new Error('Some Walrus memories could not be decrypted. Restore the namespace before relying on its rules.');
+        return recalled.results.map(m => ({ ...m, namespace: getWalletNamespace(wallet, cat), category: cat }));
+      })),
+    ]);
+    const memories=[...new Map([...results.flat(),...learning,...committed,...social?.memories||[]].map(m=>[m.namespace+':'+m.blob_id,m])).values()];
+    const verified=await verifyRecalledSettlements(memories,wallet,deps);
+    return { memories,...verified,verifiedSettlements:[...verified.verifiedSettlements,...social?.networkSettlements||[]],publicPreferences:social?.publicPreferences||[],groups:social?.groups||[],tatumAnchor: anchor };
   };
   if (p.action === 'recall_all') return recallAll();
   const client = scopedClient(category);
+  if(p.action==='recall_learning')return {learnedMemories:await recallLearning(scopedClient('social_split_trust'))};
+  if(p.action==='edit_learning'){
+    const createdMemories=await writeLearning(scopedClient('social_split_trust'),[p.learningChoice!]);
+    return {status:'COMMITTED',createdMemories,tatumAnchor:anchor};
+  }
+  if(p.action==='agent_status'){
+    const v=await fetchAgentAllowance(wallet);if(!v||v.profileId!==state.profileId||v.memoryId!==state.memwalAccountId)throw Error('An owned allowance linked to your current profile is required.');
+    const {fetchAgentReceipt}=await import('./autopilot-onchain');const r=await fetchAgentReceipt(v.id,p.requestId!);
+    if(!r)return {execution:{state:'review_required' as const,requestId:p.requestId!,kind:'status',warning:'No confirmed receipt found yet. The original request may still be preparing. Keep it blocked or revoke the allowance before starting another financial action.'}};
+    try{
+      const createdMemories=await learnAgentReceipt(v,p.requestId!);
+      let warning:string|undefined;
+      try { const {dispatchConfirmedBill}=await import('./autopilot-dispatch');await dispatchConfirmedBill(r.digest); }
+      catch { warning='Receipt learned. Some incoming automatic payments still need event-delivery retry.'; }
+      return {status:'COMMITTED',execution:{state:'confirmed' as const,requestId:p.requestId!,kind:'status',digest:r.digest,...(warning?{warning}:{})},createdMemories,tatumAnchor:anchor};
+    }
+    catch{return {execution:{state:'confirmed' as const,requestId:p.requestId!,kind:'status',digest:r.digest,warning:'Transaction confirmed. Memory learning still needs a retry.'},tatumAnchor:anchor};}
+  }
   if (p.action === 'save_preference') {
     if (!state.contacts.some(c => c.walletAddress === p.subjectWallet)) throw new Error('Save this person as a contact before setting a payment preference.');
     const text = 'My payment preference. SOLVENCY_RULE_V1 ' + JSON.stringify({ subject: p.subjectWallet, upfrontAboveUsdc: p.upfrontAboveUsdc, excludeAlcohol:p.excludeAlcohol===true, fundingPolicy:p.fundingPolicy||'always', updatedAtMs: Date.now() });
@@ -73,8 +130,10 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
   }
   if (p.action === 'restore') {
     const result = await client.restore(getWalletNamespace(wallet, category), 20);
-    if (result.failed) throw new Error(result.failed + ' memories could not be restored; no complete recovery is claimed.');
-    return { status: result.truncated ? 'MORE_TO_RESTORE' : 'RESTORED', result, tatumAnchor: anchor };
+    const learning=category==='social_split_trust'?await client.restore(learned,20):undefined;
+    const failed=result.failed+(learning?.failed??0),truncated=result.truncated||learning?.truncated;
+    if (failed) throw new Error(failed + ' memories could not be restored; no complete recovery is claimed.');
+    return { status: truncated ? 'MORE_TO_RESTORE' : 'RESTORED', result:{...result,truncated}, tatumAnchor: anchor };
   }
   if(p.action==='record_purchase'){
     const now=Date.now(),purchasedAtMs=p.purchasedAtMs!;
@@ -101,7 +160,69 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     catch{throw new Error('Your check-in was saved, but its cash-flow context could not finish. Retry the check-in; repeated ratings are counted only once per purchase.');}
     return {status:'COMMITTED',createdMemories:[{blob_id:first.blob_id,text,namespace:getWalletNamespace(wallet,'habit_regret'),category:'habit_regret' as const},{blob_id:second.blob_id,text:cashflowText,namespace:getWalletNamespace(wallet,'cashflow_elasticity'),category:'cashflow_elasticity' as const}],tatumAnchor:anchor};
   }
-  if (p.action === 'settlement' || p.action === 'sync_settlements' || p.action === 'refresh_learning' || p.action === 'smart_split' || p.action === 'agent_chat') {
+  if(p.action==='agent_chat'){
+    const [recalled,splits,vaults]=await Promise.all([
+      recallAll(),
+      deps.agent?deps.agent.splits():fetchGroupSplitPageViaTatum(wallet).then(r=>r.splits),
+      deps.agent?deps.agent.vaults():fetchOwnedCooldownVaultsViaTatum(wallet),
+    ]);
+    if(p.incomingSplitId){
+      const incoming=await fetchGroupSplitByIdViaTatum(wallet,p.incomingSplitId);
+      splits.unshift(incoming);
+    }
+    const allowance=deps.agent?.allowance?await deps.agent.allowance():autopilotConfig()&&!deps.agent?(await fetchAutopilotState(wallet)).vault:null;
+    if(p.autoExecute&&(!allowance||allowance.epoch!==p.allowanceEpoch))throw Error('The allowance policy changed. Refresh before a new automatic command.');
+    const context={autonomyRequested:p.autoExecute===true,memoryAutomationRequested:p.autoMemory===true,profile:state,memories:recalled.memories,verifiedSettlements:recalled.verifiedSettlements,publicPreferences:recalled.publicPreferences,groups:recalled.groups,allowance,splits:splits.slice(0,30),vaults:vaults.slice(0,30),now:Date.now(),timeZone:p.timeZone!};
+    const {turn,choices}=await createAgentTurn({text:p.text!,threadId:p.threadId!,nonce,source:p.incomingSplitId?'autopilot':'user',conversation:p.conversation,context,generate:deps.agent?.generate});
+    const action=turn.action;
+    if(p.incomingSplitId){
+      const allowed=p.incomingOperation==='activate'?action.kind==='activate'&&action.splitId===p.incomingSplitId:(action.kind==='fund'&&action.splitId===p.incomingSplitId)||(action.kind==='settle'&&action.splitIds.length===1&&action.splitIds[0]===p.incomingSplitId);
+      if(!allowed)throw Error('The incoming task did not resolve to its exact consented bill action. No financial transaction was submitted.');
+    }
+    const committed:RecalledMemory[]=[];
+    let execution:MemoryResponse['execution'],agentMemorySaved=false;
+    const background=work.background;
+    const explicitMemoryCommand=/^\s*(?:please\s+)?(?:remember|save|record|log|rate|mark|set)\b/i.test(p.text!)&&!/[?"“”]/u.test(p.text!)&&!/\b(?:if|example|suppose|pretend)\b/i.test(p.text!);
+    if(p.autoMemory&&turn.executionEligible&&action.kind==='memory'&&explicitMemoryCommand&&Date.now()<(background?.expiresAt??Infinity)){
+      const saved:MemoryResponse=await executeRequestWithDeps({...action.payload,walletAddress:wallet,sessionAccountId:p.sessionAccountId},await autopilotRequestId(wallet,'memory:'+nonce),deps);
+      committed.push(...saved.createdMemories||[]);
+      agentMemorySaved=true;
+    }else if(p.autoExecute&&turn.executionEligible&&['split','protect','settle','fund','activate'].includes(action.kind)){
+      if(!deps.autonomy)throw Error('Autonomous execution is unavailable.');
+      const client=scopedClient('social_split_trust');
+      if(!client.rememberBulkAndWait)throw Error('MemWal bulk writes are required.');
+      const requestId=await autopilotRequestId(wallet,nonce);
+      const text='SOLVENCY_AGENT_AUDIT_V1 '+JSON.stringify({requestId,owner:wallet,action,allowanceId:allowance!.id,allowanceEpoch:allowance!.epoch,checkpoint:turn.checkpoint,model:turn.model,source:turn.source});
+      const audit=await commitMemoryBatch({rememberBulkAndWait:(items,options)=>client.rememberBulkAndWait!(items,options)},[{text,namespace:getWalletNamespace(wallet,'social_split_trust'),category:'social_split_trust'}],'audit:'+requestId+':'+createHash('sha256').update(text).digest('hex'));
+      turn.blobId=audit[0].blob_id;
+      committed.push(...audit);
+      const done=await deps.autonomy(turn,context);
+      execution=done.execution;
+      committed.push(...done.memories);
+      if(done.execution.state==='confirmed'&&done.execution.digest){
+        try{const {dispatchConfirmedBill}=await import('./autopilot-dispatch');await dispatchConfirmedBill(done.execution.digest);}
+        catch{execution={...done.execution,warning:[done.execution.warning,'Some incoming automatic payments need event-delivery retry.'].filter(Boolean).join(' ')};}
+      }
+    }
+    if(p.autoMemory&&background&&choices.length){
+      background.schedule(async()=>{
+        if(Date.now()>=background.expiresAt)return;
+        let fresh:MemoryClient|undefined;
+        try{
+          const latest=await deps.state(wallet);
+          if(!latest.isRegisteredOnChain||latest.wallet!==wallet||latest.profileId!==state.profileId||latest.memwalAccountId!==account.accountId)return;
+          await deps.access(wallet,latest.memwalAccountId);
+          if(Date.now()>=background.expiresAt)return;
+          fresh=work.backgroundClient?.(wallet,'social_split_trust',account.accountId);
+          await writeLearning(fresh??scopedClient('social_split_trust'),choices,background.expiresAt);
+        }catch{
+          console.warn('Quiet Memory could not confirm a background preference batch.');
+        }finally{fresh?.destroy();}
+      });
+    }
+    return {status:turn.blobId||agentMemorySaved?'COMMITTED':'READY',...recalled,agent:turn,execution,agentMemorySaved,createdMemories:committed};
+  }
+  if (p.action === 'settlement' || p.action === 'sync_settlements' || p.action === 'refresh_learning' || p.action === 'smart_split') {
     const draft=p.action==='smart_split'?parseBillDraft(p.text!,state.contacts,wallet):undefined;
     const { packageId } = contractConfig();
     const createdMemories: RecalledMemory[] = [];
@@ -135,7 +256,7 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     }
     let cursor=p.cursor, count=0, scanned=0, nextCursor:typeof p.cursor|null=null;
     const cursors=new Set<string>();
-    for(let pageIndex=0;pageIndex<(['refresh_learning','smart_split','agent_chat'].includes(p.action)?4:1);pageIndex++){
+    for(let pageIndex=0;pageIndex<(['refresh_learning','smart_split'].includes(p.action)?4:1);pageIndex++){
       const page=await deps.events({query:{MoveEventType:packageId+'::core::ShareSettledEvent'},cursor,limit:5,order:'descending'});
       const key=page.nextCursor?JSON.stringify(page.nextCursor):'';
       if(page.hasNextPage&&(!page.nextCursor||cursors.has(key)||(page.nextCursor.txDigest===cursor?.txDigest&&page.nextCursor.eventSeq===cursor?.eventSeq)))throw new Error('Settlement history pagination did not advance.');
@@ -149,14 +270,6 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
       nextCursor=page.hasNextPage?page.nextCursor:null;
       if(!nextCursor)break;
       cursor=nextCursor;
-    }
-    if(p.action==='agent_chat'){
-      const chat=await scopedClient('social_split_trust').recall({query:'SOLVENCY_AGENT_V1 '+p.threadId+' '+p.text,topK:40});
-      if(chat.dropped_count)throw new Error('Conversation memories could not be decrypted. Restore your memory before continuing.');
-      const recalled=await recallAll([...createdMemories,...chat.results.map(m=>({...m,namespace:getWalletNamespace(wallet,'social_split_trust'),category:'social_split_trust' as const}))]);
-      const [splits,vaults]=await Promise.all([deps.agent?deps.agent.splits():fetchGroupSplitPageViaTatum(wallet).then(r=>r.splits),deps.agent?deps.agent.vaults():fetchOwnedCooldownVaultsViaTatum(wallet)]);
-      const result=await createAgentTurn({text:p.text!,threadId:p.threadId!,nonce,context:{profile:state,memories:recalled.memories,verifiedSettlements:recalled.verifiedSettlements,splits:splits.slice(0,30),vaults:vaults.slice(0,30),now:Date.now(),timeZone:p.timeZone!},generate:deps.agent?.generate,remember:async(text,key)=>{const r=await scopedClient('social_split_trust').rememberAndWait(text,{timeoutMs:60_000,idempotencyKey:key,dedupe:true});return {blob_id:r.blob_id};}});
-      return {status:'COMMITTED',count,scanned,nextCursor,...recalled,agent:result.turn,memories:[...recalled.memories,result.memory],createdMemories:[...createdMemories,result.memory]};
     }
     return {status:'COMMITTED',count,scanned,createdMemories,nextCursor,...(draft?{draft}:{}),...(['refresh_learning','smart_split'].includes(p.action)?await recallAll(createdMemories):{tatumAnchor:anchor})};
   }

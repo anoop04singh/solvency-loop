@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after,NextRequest, NextResponse } from 'next/server';
 import { errorMessage } from '@/lib/config';
 import { proxyTatumRpc } from '@/lib/rpc-proxy';
 import { requestOrigin } from '@/lib/http-origin';
 export const runtime = 'nodejs';
+export const maxDuration=600;
 export async function POST(req: NextRequest) {
   try {
     if (req.headers.get('origin') && req.headers.get('origin') !== requestOrigin(req)) return NextResponse.json({ error: 'Origin not allowed.' }, { status: 403 });
@@ -13,6 +14,13 @@ export async function POST(req: NextRequest) {
     if (process.env.TATUM_API_KEY) text = text.split(process.env.TATUM_API_KEY).join('[redacted]');
     if (response.status === 404) text = JSON.stringify({ errors: [{ message: 'Tatum GraphQL routing failed. Contact the application operator.' }] });
     if (response.status === 429) text = JSON.stringify({ errors: [{ message: 'The network provider is busy. Wait a moment, then refresh. No payment has been retried automatically.' }] });
+    if(response.ok&&process.env.AUTOPILOT_ENABLED==='true'){
+      // Delivery metadata must never replace a successful execution response.
+      try {
+        const data=JSON.parse(text),digest=data.data?.executeTransaction?.effects?.transaction?.digest;
+        if(typeof digest==='string')after(async()=>{try{const {dispatchConfirmedBill}=await import('@/lib/autopilot-dispatch');await dispatchConfirmedBill(digest);}catch{console.error('Autopilot event delivery needs a verified event retry.');}});
+      } catch { console.error('Autopilot could not read execution delivery metadata.'); }
+    }
     return new NextResponse(text, { status: response.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'x-tatum-routed': 'sui-mainnet.gateway.tatum.io/graphql', ...(response.headers.get('retry-after') ? { 'Retry-After': response.headers.get('retry-after')! } : {}) } });
   } catch (error) {
     let message = errorMessage(error);

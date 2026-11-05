@@ -8,6 +8,7 @@ import { positiveUsdc, usdcToUnits, unitsToUsdc } from './money';
 import { fetchWalletMemWalAccount } from './memwal-account';
 import { onboardingStatus } from './onboarding';
 import {TATUM_GRAPHQL_MAX_PAGE_SIZE} from './tatum-pagination';
+import {decodeBillTitle, encodeBillTitle, type BillCategory} from './bill-category';
 
 export interface OnChainContact { walletAddress: string; handle: string; }
 export interface OnChainUserProfile {
@@ -15,7 +16,7 @@ export interface OnChainUserProfile {
   usdcBalance: number; suiBalance: number; latestCheckpoint: string; isRegisteredOnChain: boolean;
 }
 export interface OnChainGroupSplit {
-  splitId: string; creator: string; title: string; totalBillUsdc: number; creatorShareUsdc: number;
+  splitId: string; creator: string; title: string; category?: BillCategory; totalBillUsdc: number; creatorShareUsdc: number;
   createdAtMs: number; fundingDeadlineMs: number; isActive: boolean; isCancelled: boolean; pendingUpfront: number;
   participants: { debtor: string; amountOwedUsdc: number; requiresUpfrontEscrow: boolean; isFunded: boolean; isSettled: boolean; settledAtMs: number; }[];
 }
@@ -77,7 +78,7 @@ function decodeSplits(objects: SuiObjectResponse[], wallet: string): OnChainGrou
           isFunded: v.is_funded === true, isSettled: v.is_settled === true, settledAtMs: Number(v.settled_at_ms) };
       });
       if (f.creator !== wallet && !participants.some(p => p.debtor === wallet)) continue;
-      result.push({ splitId: obj.data.objectId, creator: String(f.creator), title: String(f.title), totalBillUsdc: amount(f.total_bill_amount),
+      result.push({ splitId: obj.data.objectId, creator: String(f.creator), ...decodeBillTitle(String(f.title)), totalBillUsdc: amount(f.total_bill_amount),
         creatorShareUsdc: amount(f.creator_share), createdAtMs: Number(f.created_at_ms), fundingDeadlineMs: Number(f.funding_deadline_ms),
         isActive: f.is_active === true, isCancelled: f.is_cancelled === true, pendingUpfront: Number(f.pending_upfront), participants });
     }
@@ -144,18 +145,18 @@ export async function buildRegisterUserAndContactsTx(p: { walletAddress: string;
   }
   return tx;
 }
-export async function buildCreateGroupSplitTx(p: { walletAddress: string; title: string; totalAmountUsdc: number; shares: { debtorAddress: string; amountUsdc: number; requiresUpfrontEscrow: boolean }[]; }) {
+export async function buildCreateGroupSplitTx(p: { walletAddress: string; title: string; category?: BillCategory; totalAmountUsdc: number; shares: { debtorAddress: string; amountUsdc: number; requiresUpfrontEscrow: boolean }[]; }) {
   const { packageId } = contractConfig(), wallet = requireAddress(p.walletAddress), total = positiveUsdc(p.totalAmountUsdc);
   const addresses = p.shares.map(s => requireAddress(s.debtorAddress)), amounts = p.shares.map(s => positiveUsdc(s.amountUsdc));
-  if (!p.title.trim() || new TextEncoder().encode(p.title).length > 120) throw new Error('Split title must contain 1–120 bytes.');
+  const title = encodeBillTitle(p.title, p.category);
   if (!addresses.length || addresses.length > 64 || new Set([wallet, ...addresses]).size !== addresses.length + 1) throw new Error('Split wallets must be distinct.');
   if (amounts.reduce((a, b) => a + b, 0n) >= total) throw new Error('The creator must retain a positive share of the total.');
   const access = await transactionAccess(wallet);
   const tx = new Transaction(); tx.setSender(wallet);
-  tx.moveCall({ target: packageId + '::core::create_group_split', typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [tx.object(access.profile.profileId), tx.object(access.accountId), tx.pure.string(p.title.trim()), tx.pure.u64(total), tx.pure.vector('address', addresses), tx.pure.vector('u64', amounts), tx.pure.vector('bool', p.shares.map(s => s.requiresUpfrontEscrow)), tx.object('0x6')] });
+  tx.moveCall({ target: packageId + '::core::create_group_split', typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [tx.object(access.profile.profileId), tx.object(access.accountId), tx.pure.string(title), tx.pure.u64(total), tx.pure.vector('address', addresses), tx.pure.vector('u64', amounts), tx.pure.vector('bool', p.shares.map(s => s.requiresUpfrontEscrow)), tx.object('0x6')] });
   return tx;
 }
-async function paymentCoins(owner: string, required: bigint, tx: Transaction) {
+export async function paymentCoins(owner: string, required: bigint, tx: Transaction) {
   requireAddress(owner);
   const chosen: string[] = []; let total = 0n, cursor: string | null = null;
   do {

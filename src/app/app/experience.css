@@ -1,0 +1,139 @@
+/* Application-only continuation of the current agent identity. No landing selectors. */
+.llm-experience{--experience-blue-soft:#e5edff;--experience-green-soft:#e3f0e9;--experience-ink-soft:#5c6861}
+.llm-experience.entry-experience .workspace-stage{max-width:760px;margin-top:56px;padding-bottom:56px}
+.llm-experience.entry-experience .stage-intro{margin-bottom:36px;text-align:center}
+.llm-experience.entry-experience .stage-intro h1{font-size:44px;line-height:1.12;letter-spacing:-.045em;font-weight:650;margin-top:16px}
+.llm-experience.entry-experience .stage-intro>p:last-child{max-width:500px;margin:16px auto 0;font-size:15px;line-height:24px;color:var(--experience-ink-soft)}
+.llm-experience.entry-experience .stage-intro .eyebrow{font-size:10px;letter-spacing:.12em;color:var(--product-muted)}
+.llm-experience .entry-card,.llm-experience .permission-panel,.llm-experience .profile-form{padding:36px;border:1px solid var(--product-line);border-radius:16px;box-shadow:0 8px 30px -22px var(--product-muted)}
+.llm-experience .entry-card .panel-heading,.llm-experience .permission-panel .panel-heading,.llm-experience .profile-form .panel-heading{align-items:flex-start;gap:24px}
+.llm-experience .entry-card h2,.llm-experience .permission-panel h2,.llm-experience .profile-form h2{font-size:28px;line-height:34px;letter-spacing:-.035em;font-weight:650}
+.llm-experience .entry-card .panel-description,.llm-experience .permission-panel .panel-description,.llm-experience .profile-form .panel-description{font-size:14px;line-height:22px;max-width:460px;color:var(--experience-ink-soft)}
+.llm-experience .entry-card .eyebrow,.llm-experience .permission-panel .eyebrow,.llm-experience .profile-form .eyebrow{color:var(--product-green);letter-spacing:.09em}
+.llm-experience .panel-art{width:118px;margin:-4px -6px 0 0}
+.llm-experience .art-line{stroke:var(--product-line)}
+.llm-experience .art-ink{stroke:var(--product-muted)}
+.llm-experience .art-paper{fill:var(--product-paper);stroke:var(--product-muted);stroke-width:1.3}
+.llm-experience .art-layer{fill:var(--product-soft);stroke:var(--product-line)}
+.llm-experience .art-accent-soft{fill:var(--experience-green-soft);stroke:var(--product-green);stroke-width:1.2}
+.llm-experience .art-accent{fill:var(--product-green)}
+.llm-experience .art-accent-stroke{stroke:var(--product-green)}
+.llm-experience .entry-connect{padding-top:4px}
+.llm-experience .entry-card .entry-connect .wallet-control{display:block;width:100%}
+.llm-experience .entry-card .entry-connect .wallet-control button{width:100%;max-width:none;min-height:52px!important;border:1px solid var(--product-ink)!important;border-radius:12px!important;background:var(--product-ink)!important;color:var(--product-paper)!important;font-family:var(--editorial-font)!important;font-size:14px!important;font-weight:600!important;box-shadow:0 4px 16px rgba(28,27,27,.08)!important}
+.llm-experience .entry-card .entry-connect .wallet-control button:hover{background:var(--product-muted)!important}
+.llm-experience .entry-connect>.field-help{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:12px;text-align:center;color:var(--experience-ink-soft);font-size:11px;line-height:17px}
+.llm-experience .entry-connect>.field-help svg{flex-shrink:0;color:var(--product-green)}
+.llm-experience .entry-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;padding-top:26px;border-color:var(--product-line)}
+.llm-experience .entry-steps li{flex-direction:column;gap:13px;min-width:0}
+.llm-experience .entry-steps li>span{width:36px;height:36px;border:1px solid var(--product-line);border-radius:11px;background:var(--product-soft);color:var(--product-muted)}
+.llm-experience .entry-steps li small{display:block;margin-bottom:7px;font-size:9px;line-height:14px;text-transform:uppercase;letter-spacing:.09em;color:var(--experience-ink-soft)}
+.llm-experience .entry-steps strong{display:block;font-size:13px;line-height:19px;font-weight:600;color:var(--product-ink)}
+.llm-experience .entry-steps p{font-size:12px;line-height:19px;color:var(--experience-ink-soft);margin-top:5px}
+.llm-experience .inline-details{border-color:var(--product-line);font-size:12px;color:var(--experience-ink-soft)}
+.llm-experience .inline-details summary{cursor:pointer;font-size:12px;font-weight:500;color:var(--product-muted);padding-block:4px}
+.llm-experience .inline-details p{font-size:12px;line-height:20px;color:var(--experience-ink-soft)}
+.llm-experience .onboarding-flow{margin-top:0!important}
+.llm-experience .onboarding-progress{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:0 0 28px}
+.llm-experience .onboarding-progress li{padding:0 0 17px;gap:11px;border-bottom:2px solid var(--product-line);align-items:center;color:var(--experience-ink-soft);min-width:0}
+.llm-experience .onboarding-progress .step-number{width:32px;height:32px;border:1px solid var(--product-line);border-radius:10px;background:var(--product-soft);font:500 11px/16px var(--editorial-font);color:var(--product-muted)}
+.llm-experience .onboarding-progress .step-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.llm-experience .onboarding-progress strong{font-size:12px;line-height:17px;font-weight:600}
+.llm-experience .onboarding-progress small{font-size:10px;line-height:15px;color:var(--experience-ink-soft)}
+.llm-experience .onboarding-progress li[aria-current=step]{border-color:var(--product-ink);color:var(--product-ink)}
+.llm-experience .onboarding-progress li[aria-current=step] .step-number{background:var(--product-ink);border-color:var(--product-ink);color:var(--product-paper)}
+.llm-experience .onboarding-progress li[data-complete=true] .step-number{background:var(--experience-green-soft);border-color:var(--experience-green-soft);color:var(--product-green)}
+.llm-experience .permission-panel>.badge{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:7px;border:0;background:var(--experience-blue-soft);color:var(--product-blue);font-size:11px;font-weight:500;line-height:16px}
+.llm-experience .permission-panel>.badge i{width:5px;height:5px;border-radius:50%;background:currentColor}
+.llm-experience .permission-panel>.badge[data-status=authorized]{background:var(--experience-green-soft);color:var(--product-green)}
+.llm-experience .permission-panel>.badge[data-status=attention]{background:var(--color-utility-error-50);color:var(--color-utility-error-700)}
+.llm-experience .permission-disclosure,.llm-experience .permission-confirmed{display:flex;gap:14px;padding:20px 0;border:0;border-block:1px solid var(--product-line);border-radius:0;background:none}
+.llm-experience .permission-disclosure>svg,.llm-experience .permission-confirmed>svg{flex-shrink:0;color:var(--product-green);margin-top:2px}
+.llm-experience .permission-disclosure h3,.llm-experience .permission-confirmed h3{font-size:15px;line-height:21px;font-weight:600;color:var(--product-ink)}
+.llm-experience .permission-disclosure p,.llm-experience .permission-confirmed p{font-size:13px;line-height:21px;margin-top:6px;color:var(--experience-ink-soft)}
+.llm-experience .consent-row{display:flex;align-items:flex-start;gap:11px;padding:17px 18px;border:1px solid var(--product-line);border-radius:10px;background:var(--product-soft);font-size:12px;line-height:20px;color:var(--product-muted)}
+.llm-experience .consent-row input{width:16px;height:16px;flex-shrink:0;margin-top:2px;accent-color:var(--product-green)}
+.llm-experience .next-step-note{color:var(--product-green);font-size:12px}
+.llm-experience .account-references{padding-top:16px;border-top:1px solid var(--product-line)}
+.llm-experience .account-references .proof-address{font-size:11px;color:var(--product-muted);background:var(--product-soft);border-radius:6px;padding:10px 12px;margin-block:6px 12px;overflow-wrap:anywhere}
+.llm-experience .profile-form>.review-facts{padding-block:4px}
+.llm-experience .profile-form .review-person{border-color:var(--product-line)}
+.llm-experience .field-help,.llm-experience .action-caption{color:var(--experience-ink-soft)}
+.llm-experience .loading-state{gap:22px;color:var(--product-green)}
+.llm-experience .panel.loading-panel{display:grid;grid-template-columns:88px minmax(0,1fr);padding:28px 30px;border:1px solid var(--product-line);border-radius:16px;background:var(--product-paper);box-shadow:0 8px 30px -24px var(--product-muted)}
+.llm-experience .loading-copy{flex:1;min-width:0}
+.llm-experience .loading-kicker{display:block;margin-bottom:7px;font-size:9px;line-height:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--experience-ink-soft)}
+.llm-experience .loading-copy .loading-title{font-family:var(--editorial-font);font-size:20px;line-height:26px;font-weight:600;letter-spacing:-.025em;color:var(--product-ink)}
+.llm-experience .loading-copy>p+p{max-width:420px;margin-top:8px;font-size:13px;line-height:21px;color:var(--experience-ink-soft)}
+.llm-experience .loading-orbit{width:88px;height:88px;flex-shrink:0;color:var(--product-green)}
+.llm-experience .loading-ring{stroke:var(--product-line)}
+.llm-experience .loading-satellite{fill:var(--product-green)}
+.llm-experience .loading-satellite-secondary{fill:var(--product-blue)}
+.llm-experience .loading-arc{stroke:var(--product-green)}
+.llm-experience .loading-center{fill:var(--product-soft);stroke:var(--product-line)}
+.llm-experience .loading-compact{padding:17px 20px;border:1px solid var(--product-line);border-radius:12px;background:var(--product-paper)}
+.llm-experience .loading-compact .loading-orbit{width:48px;height:48px}
+.llm-experience .loading-compact .loading-copy .loading-title{font-size:13px;line-height:19px;letter-spacing:0}
+.llm-experience .loading-compact .loading-copy>p+p{font-size:12px;line-height:19px;margin-top:4px}
+.llm-experience .loading-track{width:min(180px,100%);height:2px;margin-top:11px;background:var(--product-line)}
+.llm-experience .loading-track>span{background:var(--product-green)}
+.llm-experience .loading-skeleton{grid-column:1/-1;flex-basis:auto;width:100%;min-width:0;padding-top:22px;border-color:var(--product-line);gap:10px}
+.llm-experience .loading-skeleton>span,.llm-experience .loading-skeleton>div>span{background:var(--product-soft);border-radius:5px}
+.llm-experience .loading-skeleton>div{gap:12px}
+.llm-experience .loading-state[data-motion=false] .loading-skeleton *,.llm-experience .loading-state[data-motion=false] .loading-track>span{animation:none!important}
+.llm-experience .route-loading{min-height:calc(100dvh - 80px);background:var(--product-canvas);padding:32px;place-items:center}
+.llm-experience .route-loading>.loading-state{max-width:560px;width:100%}
+.llm-experience .entry-route-header{height:80px;padding:24px 40px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--product-line)}
+.llm-experience .entry-route-header>.eyebrow{font-size:10px}
+.llm-experience .learning-notice{border:1px solid var(--product-line);background:var(--product-paper);border-radius:10px;color:var(--experience-ink-soft)}
+.llm-experience .learning-notice strong{font-weight:600}
+.llm-experience .ambient-status{border:1px solid var(--product-line);background:var(--product-paper);color:var(--product-muted);box-shadow:0 4px 18px rgba(28,27,27,.05)}
+.llm-experience .ambient-status button{background:var(--product-soft);color:var(--product-muted)}
+.llm-experience .ambient-dot{background:var(--product-blue)}
+/* Wallet UI is portalled outside the workspace; dapp-kit's explicit marker is its scope. */
+[data-dapp-kit] [role=dialog]{border:1px solid var(--dapp-kit-borderColors-outlineButton);box-shadow:0 24px 80px rgba(28,27,27,.15);min-height:440px;max-height:min(680px,85dvh)}
+[data-dapp-kit] [role=dialog] h2{font-size:24px;line-height:30px;font-weight:650;letter-spacing:-.035em}
+[data-dapp-kit] [role=dialog] h3{font-weight:600}
+[data-dapp-kit] [role=dialog] p{line-height:1.6}
+[data-dapp-kit] [role=dialog] button{min-height:40px}
+[data-dapp-kit] [role=dialog] li button{min-height:48px;border:1px solid var(--dapp-kit-borderColors-outlineButton);border-radius:10px;padding:10px 12px}
+[data-dapp-kit] :focus-visible{outline:2px solid var(--color-ring-focus-ring);outline-offset:3px}
+@media(max-width:700px){
+ .llm-experience.entry-experience .workspace-stage{width:calc(100% - 32px);margin-top:32px;padding-bottom:32px}
+ .llm-experience.entry-experience .stage-intro{margin-bottom:24px}
+ .llm-experience.entry-experience .stage-intro h1{font-size:34px;line-height:39px;margin-top:12px}
+ .llm-experience.entry-experience .stage-intro>p:last-child{font-size:14px;line-height:22px;margin-top:12px}
+ .llm-experience .entry-card,.llm-experience .permission-panel,.llm-experience .profile-form{padding:24px 20px;border-radius:14px}
+ .llm-experience .entry-card h2,.llm-experience .permission-panel h2,.llm-experience .profile-form h2{font-size:24px;line-height:29px}
+ .llm-experience .entry-card .panel-description,.llm-experience .permission-panel .panel-description,.llm-experience .profile-form .panel-description{font-size:13px;line-height:21px}
+ .llm-experience .panel-art{width:70px;margin:0 -5px 0 0}
+ .llm-experience .entry-card .panel-heading,.llm-experience .permission-panel .panel-heading,.llm-experience .profile-form .panel-heading{gap:12px}
+ .llm-experience .entry-steps{grid-template-columns:1fr;gap:21px;padding-top:24px}
+ .llm-experience .entry-steps li{flex-direction:row;gap:14px}
+ .llm-experience .entry-steps li>span{flex-shrink:0;margin-top:2px}
+ .llm-experience .entry-steps li small{margin-bottom:3px}
+ .llm-experience .entry-connect>.field-help{align-items:flex-start;text-align:left;font-size:10px}
+ .llm-experience .entry-connect>.field-help svg{margin-top:2px}
+ .llm-experience .onboarding-progress{gap:10px;margin-bottom:24px}
+ .llm-experience .onboarding-progress li{align-items:flex-start;flex-direction:column;gap:9px;padding-bottom:12px}
+ .llm-experience .onboarding-progress strong{font-size:10px;line-height:15px}
+ .llm-experience .onboarding-progress small{font-size:9px;line-height:14px}
+ .llm-experience .onboarding-progress .step-number{width:29px;height:29px;font-size:10px}
+ .llm-experience .permission-disclosure,.llm-experience .permission-confirmed{gap:10px;padding-block:18px}
+ .llm-experience .consent-row{padding:14px 12px;font-size:11px;line-height:19px}
+ .llm-experience .loading-state{gap:14px}
+ .llm-experience .panel.loading-panel{grid-template-columns:66px minmax(0,1fr);padding:24px 20px}
+ .llm-experience .loading-orbit{width:66px;height:66px}
+ .llm-experience .loading-copy .loading-title{font-size:18px;line-height:24px}
+ .llm-experience .loading-copy>p+p{font-size:12px;line-height:20px}
+ .llm-experience .loading-compact{padding:15px}
+ .llm-experience .loading-compact .loading-orbit{width:40px;height:40px}
+ .llm-experience .loading-compact .loading-copy .loading-title{font-size:12px}
+ .llm-experience .loading-compact .loading-copy>p+p{font-size:11px;line-height:18px}
+ .llm-experience .entry-route-header{height:64px;padding:18px 20px}
+ .llm-experience .entry-route-header .agent-brand{font-size:16px;gap:8px}
+ .llm-experience .entry-route-header>.eyebrow{display:none}
+ .llm-experience .route-loading{min-height:calc(100dvh - 64px);padding:20px}
+ [data-dapp-kit] [role=dialog]{min-height:0;max-height:calc(100dvh - 32px)}
+ [data-dapp-kit] [role=dialog] h2{font-size:23px;line-height:29px}
+}

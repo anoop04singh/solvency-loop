@@ -1301,5 +1301,14 @@ module memwal::account {
     }
     #[test_only]
     public fun test_set_active(account: &mut MemWalAccount, active: bool) { account.active = active; }
+    /// Fixture-only helper for testing a real derived delegate address. No
+    /// production authorization function or dependency binding is changed.
+    #[test_only]
+    public fun test_authorize_derived_delegate(account: &mut MemWalAccount, public_key: vector<u8>) {
+        let sui_address = derive_sui_address(&public_key);
+        account.delegate_keys.push_back(DelegateKey { public_key, sui_address, label: std::string::utf8(b"autopilot fixture"), created_at: 0 });
+    }
+    #[test_only]
+    public fun test_clear_delegates(account: &mut MemWalAccount) { account.delegate_keys = vector[]; }
 }
 

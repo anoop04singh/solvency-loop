@@ -11,12 +11,17 @@ const mixColor = (a: number, b: number, progress: number) => [16, 8, 0].reduce((
   color | Math.round(((a >> shift) & 255) + (((b >> shift) & 255) - ((a >> shift) & 255)) * progress) << shift, 0);
 
 /** A decorative subscriber to existing UI feedback. It never produces application outcomes. */
-export function OutcomeAtmosphere({ outcome, context = 'workspace' }: { outcome: AmbientOutcome; context?: 'workspace' | 'landing' }) {
+export function OutcomeAtmosphere({ outcome, context = 'workspace', motionControl }: {
+  outcome: AmbientOutcome;
+  context?: 'workspace' | 'landing';
+  motionControl?: { paused: boolean; onChange: (paused: boolean) => void };
+}) {
   const host = useRef<HTMLDivElement>(null);
   const effect = useRef<FogEffect | null>(null);
   const palette = useRef<Palette>(ambientPalettes[outcome]);
   const reducedMotion = useReducedMotion();
-  const [paused, setPaused] = useState(false);
+  const [locallyPaused, setLocallyPaused] = useState(false);
+  const paused = motionControl?.paused ?? locallyPaused;
   const [visible, setVisible] = useState(false);
   const [saveData, setSaveData] = useState(false);
   const [mode, setMode] = useState<'static' | 'fog' | 'unavailable'>('static');
@@ -104,10 +109,10 @@ export function OutcomeAtmosphere({ outcome, context = 'workspace' }: { outcome:
     </div>
     <div className="ambient-status" data-outcome={outcome}>
       <span className="ambient-dot" aria-hidden="true"/>
-      <span>{context === 'landing' ? 'Calm background' : ambientLabels[outcome]}</span>
+      <span>{motionControl ? 'Ambient motion' : context === 'landing' ? 'Calm background' : ambientLabels[outcome]}</span>
       {reducedMotion || saveData ? <span className="ambient-motion-note">{reducedMotion ? 'Reduced motion' : 'Data saver'}</span>
-        : mode === 'unavailable' ? <span className="ambient-motion-note">Static background</span>
-          : <button aria-label={paused ? 'Animate background' : 'Pause background'} aria-pressed={paused} onClick={() => setPaused(value => !value)}>
+        : mode === 'unavailable' && !motionControl ? <span className="ambient-motion-note">Static background</span>
+          : <button aria-label={motionControl ? (paused ? 'Resume motion' : 'Pause motion') : (paused ? 'Animate background' : 'Pause background')} aria-pressed={paused} onClick={() => (motionControl?.onChange ?? setLocallyPaused)(!paused)}>
             {paused ? <Play size={12}/> : <Pause size={12}/>}
           </button>}
     </div>

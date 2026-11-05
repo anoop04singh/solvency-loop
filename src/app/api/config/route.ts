@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { publicConfig, requireAddress } from '@/lib/config';
 import { delegateKeypair } from '@/lib/walrus-tatum-memory';
 import {GEMINI_MODEL} from '@/lib/agent-types';
+import {executorConfiguration} from '@/lib/agent-executor';
 export const dynamic = 'force-dynamic';
 export function GET() {
   const missing: string[] = [];
@@ -12,5 +13,6 @@ export function GET() {
     try { if ('0x' + Buffer.from(delegateKeypair().getPublicKey().toRawBytes()).toString('hex') !== c.memwalDelegatePublicKey.toLowerCase()) missing.push('memwalDelegateKeyMatch'); }
     catch { missing.push('MEMWAL_DELEGATE_PRIVATE_KEY (invalid)'); }
   }
-  return NextResponse.json({ configured: !missing.length, missing,agent:{model:GEMINI_MODEL,configured:!!process.env.GEMINI_API_KEY?.trim()} }, { headers: { 'Cache-Control': 'no-store' } });
+  let autopilot:{configured:boolean;address:string;error?:string}={configured:false,address:''};try{autopilot=executorConfiguration();}catch{autopilot.error='Autopilot executor configuration is invalid.';}
+  return NextResponse.json({ configured: !missing.length, missing,agent:{model:GEMINI_MODEL,configured:!!process.env.GEMINI_API_KEY?.trim()},autopilot }, { headers: { 'Cache-Control': 'no-store' } });
 }

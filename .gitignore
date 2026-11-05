@@ -8,6 +8,7 @@ dist/
 !.env.example
 .next/
 test-results/
+.tools/
 playwright-report/
 *.tsbuildinfo
 move/**/build/

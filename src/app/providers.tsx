@@ -9,6 +9,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@mysten/dapp-kit/dist/index.css";
 import { tatumSuiClient } from '@/lib/tatum-rpc-client';
+import {workspaceWalletTheme} from '@/lib/workspace-wallet-theme';
 
 const { networkConfig } = createNetworkConfig({
   mainnet: {
@@ -22,7 +23,7 @@ export function SolvencyProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <SuiClientProvider networks={networkConfig} defaultNetwork="mainnet" createClient={() => tatumSuiClient}>
-        <WalletProvider autoConnect>{children}</WalletProvider>
+        <WalletProvider autoConnect theme={workspaceWalletTheme}>{children}</WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>
   );

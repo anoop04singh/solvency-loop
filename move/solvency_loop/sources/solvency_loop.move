@@ -139,6 +139,10 @@ module solvency_loop::core {
         amounts: vector<u64>, escrow_flags: vector<bool>, clock: &Clock, ctx: &mut TxContext) {
         assert_usdc<T>();
         assert_onboarded(profile, memory, ctx.sender(), true);
+        let _ = create_split_for<T>(ctx.sender(), title, total_bill_amount, debtors, amounts, escrow_flags, clock, ctx);
+    }
+    public(package) fun create_split_for<T>(owner: address, title: String, total_bill_amount: u64, debtors: vector<address>, amounts: vector<u64>, escrow_flags: vector<bool>, clock: &Clock, ctx: &mut TxContext): ID {
+        assert_usdc<T>();
         valid_text(&title, 120);
         let len = debtors.length();
         assert!(len > 0 && len <= 64 && amounts.length() == len && escrow_flags.length() == len, EInvalidParticipants);
@@ -149,7 +153,7 @@ module solvency_loop::core {
         while (i < len) {
             let debtor = debtors[i];
             let amount = amounts[i];
-            assert!(debtor != ctx.sender() && debtor != @0x0 && !participants.contains(&debtor), EInvalidParticipants);
+            assert!(debtor != owner && debtor != @0x0 && !participants.contains(&debtor), EInvalidParticipants);
             assert!(amount > 0 && amount <= total_bill_amount, EInvalidSplitAmount);
             owed = owed + amount;
             if (escrow_flags[i]) { pending_upfront = pending_upfront + 1; };
@@ -162,19 +166,26 @@ module solvency_loop::core {
         assert!(total_bill_amount > owed, EInvalidSplitAmount);
         let now = clock.timestamp_ms();
         let split = GroupSplitEscrow<T> {
-            id: object::new(ctx), creator: ctx.sender(), title, total_bill_amount,
+            id: object::new(ctx), creator: owner, title, total_bill_amount,
             creator_share: total_bill_amount - owed, escrowed_balance: balance::zero(),
             participants, pending_upfront, is_active: pending_upfront == 0,
             is_cancelled: false, created_at_ms: now, funding_deadline_ms: now + DAY_MS,
         };
-        event::emit(SplitCreatedEvent { split_id: object::id(&split), creator: ctx.sender(), title, total_amount: total_bill_amount, created_at_ms: now });
+        event::emit(SplitCreatedEvent { split_id: object::id(&split), creator: owner, title, total_amount: total_bill_amount, created_at_ms: now });
+        let id = object::id(&split);
         transfer::share_object(split);
+        id
     }
+
     public fun fund_split_share<T>(profile: &UserProfile, memory: &MemWalAccount, split: &mut GroupSplitEscrow<T>, payment: Coin<T>, clock: &Clock, ctx: &mut TxContext) {
         assert_usdc<T>();
         assert_onboarded(profile, memory, ctx.sender(), true);
+        fund_for(ctx.sender(), split, payment, clock, ctx);
+    }
+    public(package) fun fund_for<T>(owner: address, split: &mut GroupSplitEscrow<T>, payment: Coin<T>, clock: &Clock, _ctx: &mut TxContext) {
+        assert_usdc<T>();
         assert!(!split.is_active && !split.is_cancelled && clock.timestamp_ms() <= split.funding_deadline_ms, EInvalidState);
-        let payer = ctx.sender();
+        let payer = owner;
         let split_id = object::id(split);
         let share = split.participants.get_mut(&payer);
         assert!(share.requires_upfront_escrow && !share.is_funded && !share.is_settled, EInvalidState);
@@ -185,10 +196,15 @@ module solvency_loop::core {
         split.escrowed_balance.join(payment.into_balance());
         event::emit(EscrowFundedEvent { split_id, payer, amount });
     }
+
     public fun activate_group_split<T>(profile: &UserProfile, memory: &MemWalAccount, split: &mut GroupSplitEscrow<T>, clock: &Clock, ctx: &mut TxContext) {
         assert_usdc<T>();
         assert_onboarded(profile, memory, ctx.sender(), true);
-        assert!(ctx.sender() == split.creator, ENotAuthorized);
+        activate_for(ctx.sender(), split, clock, ctx);
+    }
+    public(package) fun activate_for<T>(owner: address, split: &mut GroupSplitEscrow<T>, clock: &Clock, ctx: &mut TxContext) {
+        assert_usdc<T>();
+        assert!(owner == split.creator, ENotAuthorized);
         assert!(!split.is_active && !split.is_cancelled && split.pending_upfront == 0 && clock.timestamp_ms() <= split.funding_deadline_ms, EInvalidState);
         let split_id = object::id(split);
         let now = clock.timestamp_ms();
@@ -211,6 +227,7 @@ module solvency_loop::core {
         else { funds.destroy_zero(); };
         event::emit(SplitActivatedEvent { split_id, activated_at_ms: now });
     }
+
     public fun cancel_group_split<T>(profile: &UserProfile, memory: &MemWalAccount, split: &mut GroupSplitEscrow<T>, ctx: &mut TxContext) {
         assert_usdc<T>();
         assert_onboarded(profile, memory, ctx.sender(), false);
@@ -237,9 +254,13 @@ module solvency_loop::core {
     public fun settle_split_share<T>(profile: &UserProfile, memory: &MemWalAccount, split: &mut GroupSplitEscrow<T>, payment: Coin<T>, clock: &Clock, ctx: &mut TxContext) {
         assert_usdc<T>();
         assert_onboarded(profile, memory, ctx.sender(), true);
+        settle_for(ctx.sender(), split, payment, clock, ctx);
+    }
+    public(package) fun settle_for<T>(owner: address, split: &mut GroupSplitEscrow<T>, payment: Coin<T>, clock: &Clock, _ctx: &mut TxContext) {
+        assert_usdc<T>();
         assert!(split.is_active && !split.is_cancelled, ENotActive);
         let split_id = object::id(split);
-        let payer = ctx.sender();
+        let payer = owner;
         let share = split.participants.get_mut(&payer);
         assert!(!share.is_settled, EAlreadySettled);
         assert!(payment.value() == share.amount_owed, EInvalidSplitAmount);
@@ -251,6 +272,7 @@ module solvency_loop::core {
         event::emit(ShareSettledEvent { split_id, payer, recipient: split.creator, amount,
             was_escrow_enforced, settled_at_ms: clock.timestamp_ms() });
     }
+
     // Consume and return the reserve to the sender. A borrowed coin belonging to
     // somebody else cannot be presented as proof of the sender's liquidity.
     #[allow(lint(self_transfer))]
@@ -287,4 +309,23 @@ module solvency_loop::core {
     #[test_only] public fun users_for_testing(r: &SolvencyRegistry): u64 { r.total_users }
     #[test_only] public fun state_for_testing<T>(s: &GroupSplitEscrow<T>): (bool, u64, u64) { (s.is_active, s.pending_upfront, s.escrowed_balance.value()) }
     #[test_only] public fun settled_for_testing<T>(s: &GroupSplitEscrow<T>, debtor: address): bool { s.participants.get(&debtor).is_settled }
+
+    public(package) fun delegation_profile(profile: &UserProfile, memory: &MemWalAccount, ctx: &TxContext): (address, ID, address, u64, vector<address>) {
+        assert_onboarded(profile, memory, ctx.sender(), true);
+        (profile.wallet, object::id(profile), profile.memwal_account_id, profile.safe_floor_usdc, profile.contacts.keys())
+    }
+    public(package) fun agent_share<T>(split: &GroupSplitEscrow<T>, owner: address, clock: &Clock): (u64, address, bool) {
+        assert_usdc<T>(); assert!(!split.is_cancelled, EInvalidState);
+        let share = split.participants.get(&owner); assert!(!share.is_settled, EAlreadySettled);
+        if (!split.is_active) { assert!(share.requires_upfront_escrow && !share.is_funded && clock.timestamp_ms() <= split.funding_deadline_ms, EInvalidState); };
+        (share.amount_owed, split.creator, !split.is_active)
+    }
+    public(package) fun cooldown_for<T>(owner: address, funds: Coin<T>, namespace: String, clock: &Clock, ctx: &mut TxContext): ID {
+        assert_usdc<T>(); valid_text(&namespace, 128); assert!(funds.value() > 0, EInvalidSplitAmount);
+        let amount = funds.value(); let unlock_time_ms = clock.timestamp_ms() + DAY_MS;
+        let vault = CooldownVault { id: object::new(ctx), owner, locked_balance: funds.into_balance(), unlock_time_ms, trigger_memory_namespace: namespace };
+        let vault_id = object::id(&vault);
+        event::emit(CooldownLockedEvent { vault_id, owner, amount, unlock_time_ms, namespace });
+        transfer::transfer(vault, owner); vault_id
+    }
 }

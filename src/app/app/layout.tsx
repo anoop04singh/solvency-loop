@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { SolvencyProviders } from '../providers';
 import './product.css';
 import './agent.css';
+import './experience.css';
 
 export const metadata: Metadata = {
   title: 'Your workspace — SolvencyLoop',

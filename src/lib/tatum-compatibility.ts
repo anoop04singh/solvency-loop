@@ -5,6 +5,7 @@ import { bcs } from '@mysten/sui/bcs';
 import { deriveDynamicFieldID, fromBase58, fromBase64, normalizeSuiAddress } from '@mysten/sui/utils';
 import { requestTatumGraphql, TATUM_GRAPHQL_URL } from './tatum-request';
 import {tatumPageSize} from './tatum-pagination';
+import {publicConfig} from './config';
 
 function jsonFields(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(jsonFields);
@@ -42,8 +43,23 @@ export function normalizedType(value: unknown): SuiMoveNormalizedType {
 type LegacyCursor = { txDigest: string; eventSeq: string; cursor?: string };
 export function createGraphqlCompatibilityClient(): SuiJsonRpcClient {
   const browser = typeof window !== 'undefined';
+  const publication = new Map<string, Promise<number>>();
   const gql = new SuiGraphQLClient({ network:'mainnet', url: browser ? '/api/tatum-rpc' : TATUM_GRAPHQL_URL,
-    fetch: async (input, init) => browser ? fetch(input, { ...init, cache:'no-store' }) : requestTatumGraphql(JSON.parse(String(init?.body)), init?.signal || undefined) });
+    fetch: async (input, init) => {
+      const payload = JSON.parse(String(init?.body));
+      const filter = payload.variables?.filter;
+      if (/\bquery listEvents\(/.test(payload.query) && typeof filter?.type === 'string') {
+        const [pkg, module] = filter.type.toLowerCase().split('::');
+        const coreOrigin = publicConfig().packageId.toLowerCase();
+        const agentOrigin = (process.env.NEXT_PUBLIC_AUTOPILOT_TYPE_ORIGIN || process.env.NEXT_PUBLIC_AUTOPILOT_PACKAGE_ID || '').toLowerCase();
+        if (pkg && ((module === 'core' && pkg === coreOrigin) || (module === 'autopilot' && pkg === agentOrigin))) {
+          filter.afterCheckpoint = await publicationLowerBound(pkg);
+        }
+      }
+      return browser
+        ? fetch(input, { ...init, body:JSON.stringify(payload), cache:'no-store' })
+        : requestTatumGraphql(payload, init?.signal || undefined);
+    } });
   const core = gql.core;
   // Guard Core calls too: transaction gas resolution and MemWal use this API
   // directly rather than going through the legacy-compatible facade.
@@ -60,6 +76,25 @@ export function createGraphqlCompatibilityClient(): SuiJsonRpcClient {
     const r = await gql.query<T,Record<string,unknown>>({query:source,variables});
     if (r.errors?.length || !r.data) throw new Error(r.errors?.map(e=>e.message).join('; ') || 'Tatum GraphQL response is missing data.');
     return r.data;
+  }
+  function publicationLowerBound(address: string): Promise<number> {
+    const existing = publication.get(address);
+    if (existing) return existing;
+    // Unbounded streams can start before Tatum's retained history. No event from
+    // this exact type origin can predate the publication of its package.
+    const lookup = query<{package: {address: string; previousTransaction?: {effects?: {checkpoint?: {sequenceNumber: number}}}} | null}>(
+      'query EventOrigin($address:SuiAddress!) { package(address:$address) { address previousTransaction { effects { checkpoint { sequenceNumber } } } } }',
+      {address},
+    ).then(({package: origin}) => {
+      const checkpoint = origin?.previousTransaction?.effects?.checkpoint?.sequenceNumber;
+      if (origin?.address !== address || typeof checkpoint !== 'number' || !Number.isSafeInteger(checkpoint) || checkpoint < 1) {
+        throw new Error('Could not verify the publication checkpoint for this event history.');
+      }
+      return checkpoint - 1;
+    });
+    publication.set(address, lookup);
+    void lookup.catch(() => publication.delete(address));
+    return lookup;
   }
   Object.assign(core, { getChainIdentifier: async () => query<{chainIdentifier:string}>('query { chainIdentifier }') });
   const getObject = async ({id}: {id:string}) => {
@@ -89,9 +124,11 @@ export function createGraphqlCompatibilityClient(): SuiJsonRpcClient {
   Object.assign(client, { core,
     getObject,
     multiGetObjects: async ({ids}:{ids:string[]}) => (await core.getObjects({objectIds:ids,include:{json:true}})).objects.map(o=>{if(o instanceof Error) throw o;return legacyObject(o);}),
-    getDynamicFieldObject: async ({parentId,name}:{parentId:string;name:{type:string;value:string}}) => {
-      if (name.type !== 'address') throw new Error('Only wallet directory fields are supported.');
-      const id=deriveDynamicFieldID(parentId,'address',bcs.Address.serialize(name.value).toBytes());
+    getDynamicFieldObject: async ({parentId,name}:{parentId:string;name:{type:string;value:unknown}}) => {
+      if(name.type!=='address'&&name.type!=='vector<u8>')throw new Error('Unsupported dynamic field key type.');
+      if(name.type==='vector<u8>'&&(!Array.isArray(name.value)||name.value.length!==32||name.value.some(v=>!Number.isInteger(v)||v<0||v>255)))throw new Error('Invalid agent receipt key.');
+      const bytes=name.type==='address'?bcs.Address.serialize(String(name.value)).toBytes():bcs.vector(bcs.u8()).serialize(name.value as number[]).toBytes();
+      const id=deriveDynamicFieldID(parentId,name.type,bytes);
       const r=await getObject({id}); return 'error' in r ? {error:{code:'dynamicFieldNotFound',parent_object_id:parentId}} : r;
     },
     getLatestCheckpointSequenceNumber: async () => String((await query<{checkpoint:{sequenceNumber:number}}>('query { checkpoint { sequenceNumber } }')).checkpoint.sequenceNumber),

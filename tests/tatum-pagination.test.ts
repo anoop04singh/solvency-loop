@@ -61,3 +61,24 @@ test('coin read failures still propagate before any wallet handoff',async()=>{
   await assert.rejects(client.getCoins({owner,coinType:SUI_MAINNET_USDC_TYPE,limit:100}),/provider unavailable/);
  },()=>({errors:[{message:'provider unavailable'}]}));
 });
+test('Solvency event scans start at the verified package publication and retain the same window on continuation',async()=>{
+ const prior=process.env.NEXT_PUBLIC_SOLVENCY_PACKAGE_ID;
+ process.env.NEXT_PUBLIC_SOLVENCY_PACKAGE_ID=owner;
+ const type=owner+'::core::SplitCreatedEvent';
+ try{
+  await withGateway(async(client,requests)=>{
+   const first=await client.queryEvents({query:{MoveEventType:type},limit:5});
+   assert.equal(first.data[0].type,type);
+   assert.ok(first.nextCursor);
+   const second=await client.queryEvents({query:{MoveEventType:type},limit:5,cursor:first.nextCursor});
+   assert.equal(second.hasNextPage,false);
+   assert.equal(requests.length,3);
+   assert.equal(requests[2].variables.before,'earlier');
+  },r=>{
+   if(r.query.includes('query EventOrigin'))return {data:{package:{address:owner,previousTransaction:{effects:{checkpoint:{sequenceNumber:321}}}}}};
+   const filter=r.variables.filter as {afterCheckpoint:number;type:string};
+   assert.deepEqual(filter,{type,afterCheckpoint:320});
+   return {data:{events:{nodes:r.variables.before?[]:[{sequenceNumber:0,sender:{address:owner},transactionModule:{package:{address:owner},name:'core'},contents:{type:{repr:type},json:{split_id:id}},transaction:{digest,effects:{checkpoint:{sequenceNumber:321}}}}],pageInfo:{hasPreviousPage:!r.variables.before,hasNextPage:false,startCursor:'earlier',endCursor:'later'}}}};
+  });
+ }finally{if(prior===undefined)delete process.env.NEXT_PUBLIC_SOLVENCY_PACKAGE_ID;else process.env.NEXT_PUBLIC_SOLVENCY_PACKAGE_ID=prior;}
+});

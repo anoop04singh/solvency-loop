@@ -1,12 +1,16 @@
+import {encodeBillTitle,inferBillCategory,isBillCategory,recentBillCategories} from './bill-category';
 import type {OnChainUserProfile,OnChainGroupSplit,OnChainCooldownVault} from './onchain-user-manager';
 import type {RecalledMemory} from './memory-protocol';
-import {requireAddress,getWalletNamespace,CATEGORIES,type SolvencyNamespaceCategory} from './config';
+import {requireAddress,CATEGORIES,type SolvencyNamespaceCategory} from './config';
 import {positiveUsdc,usdcToUnits,unitsToUsdc,formatUsdc} from './money';
 import {computeExpense,paymentPreferences,type ExpenseItem} from './expense';
 import {spendingRoom,purchaseMemories,CHECKIN_DELAY_MS,MERCHANT_CATEGORIES,type VerifiedSettlement,type MerchantCategory} from './financial-insights';
 import {generateAgentIntent} from './gemini';
-import {GEMINI_MODEL,recalledAgentTurns,type AgentAction,type AgentTurn} from './agent-types';
-export interface AgentContext {profile:OnChainUserProfile;memories:RecalledMemory[];verifiedSettlements:VerifiedSettlement[];splits:OnChainGroupSplit[];vaults:OnChainCooldownVault[];now:number;timeZone:string;}
+import type {AgentAllowance,GroupConvention,PublicSocialPreference} from './autopilot-types';
+import {allowanceRoom} from './autopilot-types';
+import {GEMINI_MODEL,type AgentAction,type AgentTurn} from './agent-types';
+import {learnedNamespace,latestLearnedPreferences,selectLearningChoices,type AgentExchange} from './agent-learning';
+export interface AgentContext {autonomyRequested?:boolean;memoryAutomationRequested?:boolean;allowance?:AgentAllowance|null;groups?:GroupConvention[];publicPreferences?:PublicSocialPreference[];profile:OnChainUserProfile;memories:RecalledMemory[];verifiedSettlements:VerifiedSettlement[];splits:OnChainGroupSplit[];vaults:OnChainCooldownVault[];now:number;timeZone:string;}
 function object(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('The agent response is incomplete. Describe the request again.');return value as Record<string,unknown>;}
 function text(value:unknown,label:string,max=120){if(typeof value!=='string'||!value.trim()||new TextEncoder().encode(value.trim()).length>max)throw new Error('Provide '+label+'.');return value.trim();}
 function list(value:unknown,max=64){if(!Array.isArray(value)||value.length>max)throw new Error('The agent returned an invalid list. Try a smaller request.');return value;}
@@ -23,17 +27,22 @@ export function prepareAgentAction(value:unknown,c:AgentContext):{action:AgentAc
   const total=amount(r.amount),title=text(r.title,'a bill description'),all=[c.profile.wallet,...people.map(p=>p.walletAddress)];
   const items:ExpenseItem[]=list(r.items,30).map((value,i)=>{const item=object(value),kind=text(item.kind,'an item category',10);if(!['food','alcohol','other'].includes(kind))throw new Error('Choose food, alcohol or other for receipt items.');const selected=list(item.people).map(name=>String(name).toLowerCase()==='you'?c.profile.wallet:contact(name,c).walletAddress);return {id:'agent-item-'+i,label:text(item.label,'an item label',80),kind:kind as ExpenseItem['kind'],amount:amount(item.amount),wallets:(selected.length?selected:all).filter(wallet=>kind!=='alcohol'||!people.find(p=>p.walletAddress===wallet)?.excludeAlcohol)};});
   if(!items.length&&people.some(p=>p.excludeAlcohol))throw new Error('What were the food and alcohol amounts? I need the receipt breakdown to exclude drinks accurately.');
-  if(!items.length&&/\b(drinks?|alcohol|bar|liquor)\b/i.test(title)&&people.some(p=>paymentPreferences(c.memories).get(p.walletAddress)?.excludeAlcohol))throw new Error('What were the food and alcohol amounts? A saved drinks exclusion needs exact receipt amounts.');
+  if(!items.length&&/\b(drinks?|alcohol|bar|liquor)\b/i.test(title)&&people.some(p=>paymentPreferences(c.memories).get(p.walletAddress)?.excludeAlcohol||c.publicPreferences?.some(s=>s.active&&s.owner===p.walletAddress&&s.excludeAlcohol)))throw new Error('What were the food and alcohol amounts? A saved drinks exclusion needs exact receipt amounts.');
+  const group=r.groupId?(c.groups||[]).find(g=>g.id===r.groupId&&g.members.every(m=>m.approved)):null;
+  if(r.groupId&&!group)throw Error('That group convention is unavailable or awaits consent.');
+  if(group){people.sort((a,b)=>group.members.findIndex(m=>m.wallet===a.walletAddress)-group.members.findIndex(m=>m.wallet===b.walletAddress));if(items.length||people.some(p=>p.customAmount)||group.members.length!==all.length||group.members.some(m=>!all.includes(m.wallet)))throw Error('Use the exact approved group for a conventional split, or specify a separate receipt/custom bill.');for(const p of people){const weight=group.members.find(m=>m.wallet===p.walletAddress)!.weight;p.customAmount=String(unitsToUsdc(positiveUsdc(total)*BigInt(weight)/10000n));}}
   const mode=items.length?'items':people.some(p=>p.customAmount)?'custom':'equal';
-  const draft={title,total,mode,people,items} as const;
-  const allocation=computeExpense(c.profile.wallet,people,total,mode,c.memories,true,{items,observations:c.verifiedSettlements});
+  const category = isBillCategory(r.billCategory) ? r.billCategory : inferBillCategory(title) ?? (items.some(item=>item.kind==='food'||item.kind==='alcohol')?'dining':'other');
+  encodeBillTitle(title,category);
+  const draft={title,total,mode,people,items,category,...(group?{conventionId:group.id}:{})} as const;
+  const allocation=computeExpense(c.profile.wallet,people,total,mode,c.memories,true,{items,observations:c.verifiedSettlements,publicPreferences:c.publicPreferences});
   for(const share of allocation.shares){for(const item of items){if(item.kind==='alcohol'&&!item.wallets?.includes(share.walletAddress)&&!share.excludedItems.includes(item.label))share.excludedItems.push(item.label);}}
   return {action:{kind:'split',draft,allocation},reply:'I prepared this bill using your saved preferences and verified repayment history. Review the exact shares before wallet approval.'};
  }
  if(kind==='protect'){
   const value=amount(r.amount),unpaid=c.splits.filter(s=>!s.isCancelled).reduce((n,s)=>n+s.participants.filter(p=>p.debtor===c.profile.wallet&&!p.isSettled&&!p.isFunded).reduce((sum,p)=>sum+usdcToUnits(p.amountOwedUsdc),0n),0n);
   const room=spendingRoom(c.profile.usdcBalance,c.profile.safeFloorUsdc,unitsToUsdc(unpaid),c.memories,c.profile.wallet,c.now,c.timeZone);
-  if(positiveUsdc(value)>usdcToUnits(room.available))throw new Error('That amount exceeds your live balance after the reserve and loaded unpaid shares. Choose a smaller amount.');
+  if(positiveUsdc(value)>usdcToUnits(room.available)&&!canFund(c,positiveUsdc(value),'protect'))throw new Error('That amount exceeds your live balance after the reserve and loaded unpaid shares. Choose a smaller amount.');
   return {action:{kind:'protect',amount:value},reply:'Review a 24-hour lock of '+value+' USDC. Your registered reserve stays available. SUI pays gas.'};
  }
  if(['settle','fund','activate','cancel','refund'].includes(kind)){
@@ -46,7 +55,7 @@ export function prepareAgentAction(value:unknown,c:AgentContext):{action:AgentAc
    if((kind==='activate'||kind==='cancel')&&(bill.creator!==c.profile.wallet||bill.isActive||bill.isCancelled||(kind==='activate'&&(bill.pendingUpfront!==0||expired))))throw new Error('Only the creator can perform this action on an eligible pending bill.');
    if(share)sum+=positiveUsdc(share.amountOwedUsdc);
   }
-  if((kind==='settle'||kind==='fund')&&sum>usdcToUnits(c.profile.usdcBalance))throw new Error('Your current native Circle USDC balance is insufficient.');
+  if((kind==='settle'||kind==='fund')&&sum>usdcToUnits(c.profile.usdcBalance)&&!canFund(c,sum,'pay',bills.map(b=>b.creator)))throw new Error('Your current native Circle USDC balance is insufficient.');
   const value=String(unitsToUsdc(sum));
   return {action:kind==='settle'?{kind:'settle',splitIds:bills.map(b=>b.splitId),amount:value}:kind==='fund'?{kind:'fund',splitId:bills[0].splitId,amount:value}:{kind:kind as 'activate'|'cancel'|'refund',splitId:bills[0].splitId},reply:'Prepared '+kind+' for your connected wallet. The contract rechecks eligibility and your wallet must approve.'};
  }
@@ -83,15 +92,21 @@ export function prepareAgentAction(value:unknown,c:AgentContext):{action:AgentAc
  }
  throw new Error('Ask for a split, a vault action, your own settlement, a purchase, a check-in, a contact or a payment preference.');
 }
-export async function createAgentTurn(p:{text:string;threadId:string;nonce:string;context:AgentContext;generate?:(context:unknown)=>Promise<unknown>;remember:(text:string,key:string)=>Promise<{blob_id:string}>}){
- const c=p.context,history=recalledAgentTurns(c.memories,c.profile.wallet,p.threadId);
- const context={request:p.text,now:c.now,timeZone:c.timeZone,profile:c.profile,loadedSplits:c.splits,ownedVaults:c.vaults,verifiedSettlements:c.verifiedSettlements,purchases:purchaseMemories(c.memories,c.profile.wallet),memory:c.memories.slice(0,60).map(m=>({text:m.text.slice(0,3000),blobId:m.blob_id,category:m.category})),conversation:history.slice(-12).map(t=>({user:t.user,reply:t.reply,action:t.action,checkpoint:t.checkpoint,status:'proposed; never assume execution'}))};
- const raw=await (p.generate||generateAgentIntent)(context);let prepared:{action:AgentAction;reply:string};
- try{prepared=prepareAgentAction(raw,c);const action=prepared.action;if(action.kind==='contact'&&![p.text,...history.map(t=>t.user)].some(s=>s.toLowerCase().includes(action.walletAddress)))throw new Error('Paste the contact’s full canonical Sui wallet address. I cannot infer or invent it.');}
- catch(e){prepared={action:{kind:'none'} as AgentAction,reply:(e as Error).message};}
- const record={id:p.nonce,threadId:p.threadId,owner:c.profile.wallet,user:p.text,reply:prepared.reply,action:prepared.action,createdAtMs:c.now,checkpoint:c.profile.latestCheckpoint,model:GEMINI_MODEL,contextBlobIds:c.memories.slice(0,60).map(m=>m.blob_id)};
- const committed=await p.remember('Agent conversation and proposed action; not an executed transaction. SOLVENCY_AGENT_V1 '+JSON.stringify(record),'agent:'+p.nonce);
- if(!committed.blob_id)throw new Error('The agent turn did not commit to Walrus. No executable action was returned. Retry your request.');
- const memory:RecalledMemory={blob_id:committed.blob_id,text:'Agent conversation and proposed action; not an executed transaction. SOLVENCY_AGENT_V1 '+JSON.stringify(record),category:'social_split_trust',namespace:getWalletNamespace(c.profile.wallet,'social_split_trust')};
- return {turn:{...record,blobId:committed.blob_id} as AgentTurn,memory};
+export async function createAgentTurn(p:{text:string;threadId:string;nonce:string;source?:'user'|'autopilot';conversation?:AgentExchange[];context:AgentContext;generate?:(context:unknown)=>Promise<unknown>}){
+ const c=p.context,conversation=c.autonomyRequested?[]:p.conversation||[];
+ const memories=c.memories.filter(m=>m.namespace!==learnedNamespace(c.profile.wallet)&&!m.text.includes('SOLVENCY_AGENT_V1 ')&&!m.text.includes('SOLVENCY_AGENT_AUDIT_V1 ')).slice(0,60);
+ const learned=c.autonomyRequested?[]:latestLearnedPreferences(c.memories,c.profile.wallet).filter(m=>m.value!==null).map(({kind,topic,value})=>({kind,topic,value}));
+ const suggestedCategories=c.autonomyRequested?[]:recentBillCategories(c.splits.filter(split=>split.creator===c.profile.wallet));
+ const context={autonomyRequested:c.autonomyRequested,memoryAutomationRequested:c.memoryAutomationRequested,allowance:c.allowance,publicPreferences:c.publicPreferences,approvedGroups:c.groups?.slice(0,10),request:p.text,now:c.now,timeZone:c.timeZone,profile:c.profile,loadedSplits:c.splits,ownedVaults:c.vaults,verifiedSettlements:c.verifiedSettlements,purchases:purchaseMemories(c.memories,c.profile.wallet),memory:memories.map(m=>({text:m.text.slice(0,3000),blobId:m.blob_id,category:m.category})),conversation,learned,suggestedCategories};
+ const raw=await (p.generate||generateAgentIntent)(context);
+ let prepared:{action:AgentAction;reply:string};
+ try{prepared=prepareAgentAction(raw,c);const action=prepared.action;if(action.kind==='contact'&&![p.text,...conversation.map(t=>t.user)].some(s=>s.toLowerCase().includes(action.walletAddress)))throw new Error('Paste the contact’s full canonical Sui wallet address. I cannot infer or invent it.');}
+ catch(e){prepared={action:{kind:'none'},reply:(e as Error).message};}
+ const intent=raw as Record<string,unknown>|null;
+ const choices=c.memoryAutomationRequested?selectLearningChoices(intent?.memoryCandidates,p.text):[];
+ const reply=choices.length&&prepared.action.kind==='none'?'I understand this is a standing preference. You can review learned preferences in Audit.':prepared.reply;
+ const turn:AgentTurn={executionEligible:intent?.executionMode==='execute',source:p.source||'user',id:p.nonce,threadId:p.threadId,owner:c.profile.wallet,user:p.text,reply,action:prepared.action,createdAtMs:c.now,checkpoint:c.profile.latestCheckpoint,model:GEMINI_MODEL,contextBlobIds:memories.map(m=>m.blob_id),blobId:''};
+ return {turn,choices};
 }
+
+function canFund(c:AgentContext,amount:bigint,kind:'pay'|'protect',payees:string[]=[]){const v=c.allowance;return !!v&&v.owner===c.profile.wallet&&v.profileId===c.profile.profileId&&v.memoryId===c.profile.memwalAccountId&&v.active&&v.expiresAtMs>c.now&&amount<=BigInt(v.balanceUnits)&&amount<=allowanceRoom(v,c.now)&&(kind!=='protect'||v.allowCooldown)&&payees.every(p=>v.payees.includes(p));}

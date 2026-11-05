@@ -2,11 +2,13 @@
 
 The attached lifecycle is implemented using live Sui state, the current authenticated Tatum GraphQL transport and each user's owned MemWal account. The attachment's names, wallets, balances, checkpoints and memory numbers are illustrative; none are application defaults.
 
+Optional delegated operation is now described in [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md). The manual lifecycle below remains available. A consented one-hour browser session can sign payload-bound memory requests; a separate funded on-chain allowance can authorize eligible agent commands and incoming shares. Each owner retains their own MemWal account, and actual confirmed events still control repayment learning. Background recipients require their own live incoming consent. No creator signature authorizes writes or payments for somebody else.
+
 ## 1. Connect, resolve and learn
 
 Connecting a Mainnet wallet reads the registry directory, verifies the independent wallet-owned profile, discovers the linked MemWal account and checks ownership, active status and the app delegate. Balances, contacts and checkpoint come from Tatum. Incomplete onboarding remains mandatory for creators and counterparties alike.
 
-Once these checks finish, the app requests one personal-message signature for `refresh_learning`. The server independently repeats ownership/delegate checks, reads recent confirmed `ShareSettledEvent` records involving that wallet, verifies successful transactions and native-USDC split types, and waits for deduplicated Walrus commits into that wallet's `social_split_trust` namespace. It then recalls all three wallet-scoped namespaces and independently verifies settlement evidence used by the allocation rules.
+Once these checks finish, choose quiet memory or individual approvals before `refresh_learning`. The server verifies the wallet message or its scoped browser-session signature, independently repeats ownership/delegate checks, reads recent confirmed `ShareSettledEvent` records involving that wallet, verifies successful transactions and native-USDC split types, and waits for deduplicated Walrus commits into that wallet's `social_split_trust` namespace. It then recalls all three wallet-scoped namespaces and independently verifies settlement evidence used by the allocation rules.
 
 Safe to Spend stays unavailable until this signed refresh succeeds. An empty memory account succeeds with zero observations; it has no invented rules or required memory count. Cancellation, relayer errors and decryption failures remain visible and require an explicit retry. Background renders never repeatedly open wallet prompts. Wallet changes clear account and memory state.
 

@@ -5,13 +5,13 @@
 version = 4
 
 [pinned.mainnet.MoveStdlib]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = 'crates\sui-framework\packages\move-stdlib', rev = "85b460a63fd76a15672bbe4820bde6db78a3cfb8" }
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = 'crates\sui-framework\packages\move-stdlib', rev = "bf4073918ed33cfa0b09c500658fa116a774bcfd" }
 use_environment = "mainnet"
 manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
 deps = {}
 
 [pinned.mainnet.Sui]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = 'crates\sui-framework\packages\sui-framework', rev = "85b460a63fd76a15672bbe4820bde6db78a3cfb8" }
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = 'crates\sui-framework\packages\sui-framework', rev = "bf4073918ed33cfa0b09c500658fa116a774bcfd" }
 use_environment = "mainnet"
 manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
 deps = { MoveStdlib = "MoveStdlib" }
@@ -19,11 +19,11 @@ deps = { MoveStdlib = "MoveStdlib" }
 [pinned.mainnet.memwal]
 source = { local = '..\vendor\memwal' }
 use_environment = "mainnet"
-manifest_digest = "3D53A02BD8D005648F43EA70C35A7F880581D68372F919DFC786252FED995769"
+manifest_digest = "3885D86D49D726764B3CCF5D27B17BC2B4239B7CD1051BA43FA1F31CD0610879"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.solvency_loop]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "2DCE49A0A82D68EB5A53A6520D84C6E9670584BE02429907813B565356C88C74"
+manifest_digest = "6E6E1A58A8D4EB3695EBE82F399E19485462D14F119BCC7CD4673DF6983A6A6F"
 deps = { memwal = "memwal", std = "MoveStdlib", sui = "Sui" }
