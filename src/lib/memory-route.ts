@@ -4,6 +4,7 @@ import { verifyMemoryEnvelope } from '@/lib/memory-auth';
 import { executeMemoryRequest } from '@/lib/memory-service';
 import { requestOrigin } from '@/lib/http-origin';
 import type {MemoryAction} from './memory-protocol';
+import {AgentReplyError} from './agent-types';
 export async function handleMemoryRequest(req: NextRequest,requiredAction?:MemoryAction) {
   let envelope;
   try {
@@ -24,6 +25,7 @@ export async function handleMemoryRequest(req: NextRequest,requiredAction?:Memor
   } catch (error) {
     let message = errorMessage(error);
     for (const key of [process.env.TATUM_API_KEY, process.env.MEMWAL_DELEGATE_PRIVATE_KEY, process.env.OPENAI_API_KEY,process.env.GEMINI_API_KEY,process.env.SUI_AGENT_PRIVATE_KEY,process.env.AUTOPILOT_WEBHOOK_SECRET]) if (key) message = message.split(key).join('[redacted]');
-    return NextResponse.json({ error: message,noFinancialExecution:true }, { status: message.includes('not configured') ? 503 : 502, headers: { 'Cache-Control': 'no-store' } });
+    const code=envelope.payload.action==='agent_chat'&&error instanceof AgentReplyError?'agent_reply':undefined;
+    return NextResponse.json({ error: message,code,noFinancialExecution:true }, { status: message.includes('not configured') ? 503 : 502, headers: { 'Cache-Control': 'no-store' } });
   }
 }

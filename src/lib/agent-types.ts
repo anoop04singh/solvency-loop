@@ -4,6 +4,7 @@ import type {computeExpense} from './expense';
 import type {MemoryPayload,RecalledMemory} from './memory-protocol';
 import {memoryRecord} from './financial-insights';
 export const GEMINI_MODEL='gemini-3.5-flash-lite';
+export class AgentReplyError extends Error {}
 export type AgentAction=
  | {kind:'split';draft:BillDraft;allocation:ReturnType<typeof computeExpense>}
  | {kind:'protect';amount:string}

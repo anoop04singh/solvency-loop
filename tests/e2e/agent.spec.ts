@@ -28,11 +28,42 @@ test('chat starts blank, renders a tab-only proposal and requires separate revie
  await page.getByRole('button',{name:'Continue to wallet',exact:true}).click();await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.locator('.agent-response-card')).toContainText('Confirmed on Sui');
  await expect(page.getByRole('button',{name:'Review split',exact:true})).toHaveCount(0);expect(errors).toEqual([]);
 });
-test('chat loading reflects actual pending work; a failed commit exposes no action',async({page,request})=>{
- await openAgent(page,request);await page.getByText('Isolated agent fixture controls').click();await page.getByLabel('Hold agent response').check();await page.getByLabel('Fail Walrus commit').check();
- const input=page.getByRole('textbox',{name:'Message SolvencyLoop'});await input.fill('My real request');await input.press('Shift+Enter');expect(await page.evaluate(()=>window.__agentRequests)).toBeUndefined();await input.press('Enter');
- await expect(page.getByRole('status').filter({hasText:'Preparing with Gemini and Walrus'})).toBeVisible();await expect(page.locator('.agent-response-card')).toHaveCount(0);await expect(input).toBeDisabled();
- await page.getByRole('button',{name:'Finish response',exact:true}).click();await expect(page.getByRole('alert')).toContainText('No action is available');await expect(page.locator('.agent-response-card')).toHaveCount(0);await expect(input).toHaveValue(/My real request/);
+test('composer signals a pending reply and retains the message for retry after a Gemini error',async({page,request})=>{
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await openAgent(page,request);await page.getByText('Isolated agent fixture controls').click();await page.getByLabel('Hold agent response').check();await page.getByLabel('Fail agent reply').check();
+ const input=page.getByRole('textbox',{name:'Message SolvencyLoop'}),composer=page.locator('.agent-composer');
+ await input.fill('My real request');await input.press('Shift+Enter');expect(await page.evaluate(()=>window.__agentRequests)).toBeUndefined();
+ const before=await composer.getByRole('button',{name:'Ask agent',exact:true}).boundingBox();
+ await input.press('Enter');
+ const waiting=composer.getByRole('button',{name:'Waiting…',exact:true});
+ await expect(waiting).toBeDisabled();await expect(composer).toHaveAttribute('aria-busy','true');
+ expect((await waiting.boundingBox())?.width).toBe(before?.width);
+ await expect(composer.locator('.agent-send-spinner')).toHaveCSS('animation-name','none');
+ await expect(page.locator('.agent-response-card')).toHaveCount(0);await expect(input).toBeDisabled();
+ await page.getByRole('button',{name:'Finish response',exact:true}).click();
+ await expect(page.locator('#agent-chat-error')).toContainText('Try sending your message again.');
+ await expect(composer).toHaveAttribute('aria-busy','false');await expect(page.locator('.agent-response-card')).toHaveCount(0);await expect(input).toHaveValue(/My real request/);
+ await page.getByLabel('Hold agent response').uncheck();await page.getByLabel('Fail agent reply').uncheck();
+ await composer.getByRole('button',{name:'Ask agent',exact:true}).click();
+ await expect(page.locator('.agent-response-card')).toHaveCount(1);await expect(page.locator('#agent-chat-error')).toHaveCount(0);await expect(input).toHaveValue('');
+});
+test('a clarification and its reply box stay together on a small screen',async({page,request})=>{
+ await page.setViewportSize({width:360,height:680});
+ await openAgent(page,request);
+ const chat=page.getByRole('region',{name:'Conversation',exact:true}),log=chat.getByRole('log');
+ const input=chat.getByRole('textbox',{name:'Message SolvencyLoop'});
+ await input.fill('Split dinner with an unknown contact');
+ await chat.getByRole('button',{name:'Ask agent',exact:true}).click();
+ await expect(log.getByText('Which saved contact should share this bill?')).toBeInViewport({ratio:1});
+ await expect(input).toBeInViewport({ratio:1});
+ await expect(input).toHaveAttribute('placeholder','Reply to SolvencyLoop…');
+ await input.fill('Casey');
+ await chat.getByRole('button',{name:'Send reply',exact:true}).click();
+ await expect(log.getByText('Review these calculated shares before wallet approval.')).toBeInViewport({ratio:1});
+ await expect.poll(()=>log.evaluate(element=>element.scrollTop)).toBeGreaterThan(0);
+ await expect(input).toBeInViewport({ratio:1});
+ await expect(chat.getByRole('textbox')).toHaveCount(1);
+ expect(await page.evaluate(()=>window.__agentRequests)).toEqual(['Split dinner with an unknown contact','Casey']);
 });
 test('restored proposals cannot execute; manual editing and workspace navigation remain available',async({page,request})=>{
  await openAgent(page,request);await send(page);await page.getByText('Isolated agent fixture controls').click();await page.getByLabel('Restored conversation only').check();await expect(page.getByRole('button',{name:'Review split',exact:true})).toHaveCount(0);await expect(page.getByText('Ask again to prepare a fresh action.')).toBeVisible();

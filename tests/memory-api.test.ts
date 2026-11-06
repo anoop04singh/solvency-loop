@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {requestMemory,AutopilotUncertainError} from '../src/lib/memory-api';
-import {GEMINI_MODEL} from '../src/lib/agent-types';
+import {AgentReplyError,GEMINI_MODEL} from '../src/lib/agent-types';
 test('signed learning responses cannot silently become empty history, and Smart Fill uses its authenticated endpoint',async()=>{
  const fetch=globalThis.fetch,descriptor=Object.getOwnPropertyDescriptor(globalThis,'window'),wallet='0x'+'1'.repeat(64);let response:unknown={},path='',message='';
  Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{origin:'http://127.0.0.1:3000'}}});
@@ -24,6 +24,10 @@ test('interrupted autonomous responses block new payments while authenticated pr
   await assert.rejects(requestMemory(payload,sign),e=>e instanceof AutopilotUncertainError&&/^[a-f0-9]{64}$/.test(e.requestId));
   globalThis.fetch=async()=>Response.json({error:'Authorization rejected',noFinancialExecution:true},{status:401});
   await assert.rejects(requestMemory(payload,sign),e=>!(e instanceof AutopilotUncertainError)&&/Authorization rejected/.test(String(e)));
+  globalThis.fetch=async()=>Response.json({error:'Gemini could not reply.',code:'agent_reply',noFinancialExecution:true},{status:502});
+  await assert.rejects(requestMemory(payload,sign),AgentReplyError);
+  globalThis.fetch=async()=>Response.json({error:'Interrupted',code:'agent_reply'},{status:502});
+  await assert.rejects(requestMemory(payload,sign),AutopilotUncertainError);
   globalThis.fetch=async()=>new Response('invalid result');await assert.rejects(requestMemory(payload,sign),AutopilotUncertainError);
  }finally{globalThis.fetch=originalFetch;if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else Reflect.deleteProperty(globalThis,'window');}
 });

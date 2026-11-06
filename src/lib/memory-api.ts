@@ -4,7 +4,7 @@ import {authorizeMemoryRequest} from './memory-session';
 import type { VerifiedSettlement } from './financial-insights';
 import type {BillDraft} from './bill-draft';
 import type {AgentExecution,PublicSocialPreference} from './autopilot-types';
-import {isAgentAction,GEMINI_MODEL,type AgentTurn} from './agent-types';
+import {AgentReplyError,isAgentAction,GEMINI_MODEL,type AgentTurn} from './agent-types';
 export interface MemoryResponse { execution?:AgentExecution;agentMemorySaved?:boolean;publicPreferences?:PublicSocialPreference[]; status?: string; count?: number; scanned?:number; draft?:BillDraft; agent?:AgentTurn; memories?: RecalledMemory[]; learnedMemories?:RecalledMemory[]; createdMemories?:RecalledMemory[]; verifiedSettlements?:VerifiedSettlement[]; rejectedEvidenceCount?:number; evidenceLimitReached?:boolean; purchaseId?:string; tatumAnchor?: { checkpoint: string; usdcBalance?:number }; result?: { truncated?: boolean }; nextCursor?: SettlementCursor | null; }
 export class AutopilotUncertainError extends Error {constructor(public requestId:string){super('The agent response was interrupted. Check its on-chain receipt before another financial action.');}}
 export async function requestMemory(payload: MemoryPayload, sign: (input: { message: Uint8Array }) => Promise<{ signature: string }>): Promise<MemoryResponse> {
@@ -14,7 +14,12 @@ export async function requestMemory(payload: MemoryPayload, sign: (input: { mess
   try{
   const response = await fetch(payload.action==='agent_chat'?'/api/agent':payload.action==='smart_split'?'/api/smart-split':'/api/memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(authorization) });
   const data = await response.json();
-  if (!response.ok){safelyRejected=data.noFinancialExecution===true;throw new Error(data.error || 'Memory request failed.');}
+  if (!response.ok){
+    safelyRejected=data.noFinancialExecution===true;
+    const message=data.error||'Memory request failed.';
+    if(payload.action==='agent_chat'&&safelyRejected&&data.code==='agent_reply')throw new AgentReplyError(message);
+    throw new Error(message);
+  }
   if(payload.action==='recall_learning'&&!Array.isArray(data.learnedMemories))throw new Error('The learned preference response is incomplete.');
   if(['recall_all','refresh_learning','smart_split','agent_chat'].includes(payload.action)&&(!Array.isArray(data.memories)||!Array.isArray(data.verifiedSettlements)||!Number.isInteger(data.rejectedEvidenceCount)||data.rejectedEvidenceCount<0||!/^\d+$/.test(String(data.tatumAnchor?.checkpoint||''))))throw new Error('The learning response is incomplete. Retry your personal learning; no empty fallback was used.');
   if(payload.action==='agent_chat'){
