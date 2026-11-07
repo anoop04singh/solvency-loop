@@ -3,6 +3,7 @@ import { CATEGORIES, requireAddress, type SolvencyNamespaceCategory } from './co
 import { MERCHANT_CATEGORIES, type MerchantCategory } from './financial-insights';
 import type {MemoryDelegation} from './memory-session-protocol';
 import {isLearningChoice,MAX_EXCHANGE_CHARS,MAX_RECENT_EXCHANGES,type AgentExchange,type LearningChoice} from './agent-learning';
+import {isSplitContinuation,type SplitContinuation} from './split-continuation';
 export type MemoryAction = 'recall_all' | 'recall_learning' | 'refresh_learning' | 'smart_split' | 'agent_chat' | 'agent_status' | 'remember' | 'analyze' | 'restore' | 'save_preference' | 'edit_learning' | 'settlement' | 'sync_settlements' | 'record_purchase' | 'regret_checkin';
 export interface SettlementCursor { txDigest: string; eventSeq: string; cursor?: string; }
 export interface MemoryPayload {
@@ -13,6 +14,7 @@ export interface MemoryPayload {
   purchaseId?:string; verdict?:'regretted'|'worth_it'; intensity?:number;
   threadId?:string;
   conversation?:AgentExchange[];
+  pendingSplit?:SplitContinuation;
   learningChoice?:LearningChoice;
   sessionAccountId?:string;
   autoExecute?:boolean;autoMemory?:boolean;requestId?:string;
@@ -36,6 +38,7 @@ export function validatePayload(value: unknown): MemoryPayload {
   for (const field of [p.text, p.query]) if (field !== undefined && (typeof field !== 'string' || !field.trim() || field.length > 8000)) throw new Error('Memory text/query must contain 1–8000 characters.');
   if (['remember', 'analyze','smart_split'].includes(p.action) && !p.text?.trim()) throw new Error('Memory text is required.');
   if(p.action==='agent_chat'){
+    if(p.pendingSplit!==undefined&&(p.autoExecute||!isSplitContinuation(p.pendingSplit)))throw Error('The pending split is invalid. Start a new reviewed split.');
     if(typeof p.text!=='string'||!p.text.trim()||p.text.length>4000||typeof p.threadId!=='string'||!/^[a-zA-Z0-9-]{16,64}$/.test(p.threadId))throw new Error('A message and valid conversation ID are required.');
     if(typeof p.timeZone!=='string'||p.timeZone.length>80)throw new Error('A valid time zone is required.');
     try{new Intl.DateTimeFormat('en-US',{timeZone:p.timeZone});}catch{throw new Error('A valid time zone is required.');}

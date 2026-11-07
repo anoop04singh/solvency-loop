@@ -37,13 +37,16 @@ test('chat replies bind to the signed request and submitted actions require a co
  Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{origin:'http://127.0.0.1:3000'}}});
  globalThis.fetch=async(input,init)=>{path=String(input);const e=JSON.parse(String(init?.body));const agent={id:e.nonce,owner:wallet,threadId,user:e.payload.text,blobId:'test-blob',model:GEMINI_MODEL,action:{kind:'none'}};
   if(mode==='nonce')agent.id='another-nonce';if(mode==='owner')agent.owner='0x'+'2'.repeat(64);if(mode==='thread')agent.threadId='foreign-thread-0001';
-  if(['tab','no-audit'].includes(mode))agent.blobId='';
+  if(['tab','no-audit','chain-read'].includes(mode))agent.blobId='';
+  if(mode==='chain-read')return Response.json({status:'READY',agent,createdMemories:[],tatumAnchor:{checkpoint:'123'}});
   return Response.json({status:mode==='pending'?'PENDING':agent.blobId?'COMMITTED':'READY',agent,execution:mode==='no-audit'?{state:'submitted'}:undefined,createdMemories:mode==='blob'||!agent.blobId?[]:[{blob_id:'test-blob'}],memories:[],verifiedSettlements:[],rejectedEvidenceCount:0,tatumAnchor:{checkpoint:'123'}});
  };
  const sign=async({message}:{message:Uint8Array})=>{signature=new TextDecoder().decode(message);return {signature:'test-only'};};
  try{
   await requestMemory({action:'agent_chat',walletAddress:wallet,text:'An actual request',threadId,timeZone:'UTC'},sign);assert.equal(path,'/api/agent');assert.match(signature,/An actual request/);assert.match(signature,/test-thread-00000001/);
   mode='tab';assert.equal((await requestMemory({action:'agent_chat',walletAddress:wallet,text:'An actual request',threadId,timeZone:'UTC'},sign)).status,'READY');
+  mode='chain-read';const lookup=await requestMemory({action:'agent_chat',walletAddress:wallet,text:'What are my pending splits?',threadId,timeZone:'UTC'},sign);
+  assert.equal(lookup.agent?.action.kind,'none');assert.equal(lookup.memories,undefined);
   for(mode of ['nonce','owner','thread','blob','pending','no-audit'])await assert.rejects(requestMemory({action:'agent_chat',walletAddress:wallet,text:'An actual request',threadId,timeZone:'UTC'},sign),/No action is available/);
  }finally{globalThis.fetch=fetch;if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else Reflect.deleteProperty(globalThis,'window');}
 });

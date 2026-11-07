@@ -43,12 +43,16 @@
 .llm-experience .agent-core-label svg{color:var(--agent-green)}
 .llm-experience .agent-hero h1{font-size:48px;font-weight:600;line-height:52px;letter-spacing:-.035em;margin:18px 0 12px;overflow-wrap:anywhere}
 .llm-experience .agent-hero p{font-size:18px;line-height:26px;color:var(--agent-muted)}
-.llm-experience .agent-chat-panel{display:flex;flex-direction:column;block-size:clamp(20rem,54svh,36rem);min-width:0;border:1px solid var(--color-border-secondary);border-radius:16px;background:rgba(255,255,255,.88);box-shadow:0 6px 20px -14px rgba(0,0,0,.2)}
+.llm-experience .agent-chat-panel[data-expanded=true]{--agent-history-size:clamp(15rem,calc(54svh - 4.75rem),31rem);border:1px solid var(--color-border-secondary);border-radius:16px;background:rgba(255,255,255,.57);backdrop-filter:blur(18px);box-shadow:0 6px 20px -14px rgba(0,0,0,.2)}
+.llm-experience .agent-chat-reveal{overflow:clip}
+.llm-experience .agent-chat-history{display:flex;flex-direction:column;block-size:var(--agent-history-size)}
 .llm-experience .agent-chat-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;padding:12px 16px;border-bottom:1px solid var(--color-border-secondary)}
 .llm-experience .agent-chat-header h2{font-size:14px;font-weight:600;line-height:20px;color:var(--agent-ink)}
-.llm-experience .agent-chat-dock{flex:none;padding:10px 12px;border-top:1px solid var(--color-border-secondary)}
+.llm-experience .agent-chat-panel[data-expanded=true] .agent-chat-dock{padding:10px 12px;border-top:1px solid var(--color-border-secondary)}
 .llm-experience .agent-chat-dock .flow-error{margin-top:8px}
-.llm-experience .agent-composer{display:flex;align-items:center;gap:12px;padding:6px 8px 6px 14px;border:1px solid var(--color-border-secondary);border-radius:12px;background:rgba(255,255,255,.96)}
+.llm-experience .agent-chat-idle-tools{display:flex;justify-content:flex-end;margin:8px 8px 0}
+.llm-experience .agent-composer{display:flex;align-items:center;gap:16px;padding:11px 14px 11px 24px;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 10px 16px -7px rgba(0,0,0,.16),0 2px 5px rgba(0,0,0,.03)}
+.llm-experience .agent-chat-panel[data-expanded=true] .agent-composer{gap:12px;padding:6px 8px 6px 14px;border:1px solid var(--color-border-secondary);background:rgba(255,255,255,.53);box-shadow:none}
 .llm-experience .agent-composer>svg{color:var(--agent-muted);flex-shrink:0}
 .llm-experience .agent-composer textarea{flex:1;width:100%;min-width:0;resize:vertical;max-height:96px;min-height:36px;padding:7px 0;outline:0;border:0;background:none;font:400 15px/22px var(--editorial-font);color:var(--agent-ink)}
 .llm-experience .agent-composer:focus-within{outline:2px solid #bccac0;outline-offset:2px}
@@ -62,8 +66,10 @@
 .llm-experience .agent-send-label[aria-hidden=true]{visibility:hidden}
 @media (prefers-reduced-motion:no-preference){
  .llm-experience .agent-send-spinner{animation:agent-send-spin .85s linear infinite}
+ .llm-experience .agent-chat-reveal{animation:agent-chat-expand .24s ease-out both}
 }
 @keyframes agent-send-spin{to{transform:rotate(1turn)}}
+@keyframes agent-chat-expand{from{block-size:0;opacity:0}to{block-size:var(--agent-history-size);opacity:1}}
 .llm-experience .agent-data-note{font-size:11px;line-height:17px;color:var(--agent-muted);margin:12px 8px 0;max-width:820px}
 .llm-experience .agent-quick-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:32px 0 40px}
 .llm-experience .agent-quick-actions>button{padding:16px;text-align:left;background:rgba(255,255,255,.88);backdrop-filter:blur(12px);border:1px solid transparent;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);transition:background .2s,transform .2s}
@@ -82,7 +88,7 @@
 .llm-experience .agent-empty{display:flex;flex:1;justify-content:center;align-items:center;gap:12px;padding:16px;color:#6d7a72;font-size:13px;line-height:20px;text-align:center}
 .llm-experience .agent-user-message{display:flex;align-items:center;gap:16px;width:fit-content;max-width:64%;margin:0 0 16px auto;padding:16px 20px;background:rgba(235,231,231,.9);backdrop-filter:blur(8px);border-radius:12px 2px 12px 12px;font-size:15px;line-height:22px;overflow-wrap:anywhere}
 .llm-experience .agent-user-message>i{display:grid;place-items:center;width:24px;height:24px;flex-shrink:0;border-radius:12px;background:#bdd4ca;color:var(--agent-green);font-size:11px;font-style:normal;font-weight:600}
-.llm-experience .agent-response-card{display:flex;flex-direction:column;gap:14px;padding:18px 20px;border:1px solid var(--color-border-secondary);border-radius:12px;background:rgba(255,255,255,.96)}
+.llm-experience .agent-response-card{display:flex;flex-direction:column;gap:14px;padding:18px 20px;border:1px solid var(--color-border-secondary);border-radius:12px;background:rgba(255,255,255,.54)}
 .llm-experience .agent-response-card>header{display:flex;align-items:center;gap:14px}
 .llm-experience .agent-response-icon{width:42px;height:42px;display:grid;place-items:center;background:var(--agent-green);color:#fff;border-radius:12px;flex-shrink:0}
 .llm-experience .agent-response-card h2{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:20px;line-height:26px;font-weight:600;letter-spacing:-.015em}
@@ -122,8 +128,9 @@
  .llm-experience .agent-header-inner{width:calc(100% - 32px);gap:10px}.llm-experience .agent-brand{font-size:0;gap:0}.llm-experience .agent-brand>span{width:30px;height:30px}.llm-experience .agent-header-actions{gap:8px}.llm-experience .agent-memory-status{font-size:9px;padding:5px 7px}.llm-experience .agent-avatar{display:none}
  .llm-experience.agent-mode .workspace-stage,.llm-experience.agent-mode .workspace-stage[data-ready=true]{width:calc(100% - 32px);margin-top:16px}.llm-experience .agent-workspace{padding-top:0}.llm-experience .agent-status-strip{padding:10px 12px;font-size:9px;line-height:14px}.llm-experience .agent-status-strip>div{gap:8px 16px}
  .llm-experience .agent-hero{margin:24px 0 18px}.llm-experience .agent-hero h1{font-size:32px;line-height:36px;letter-spacing:-.03em}.llm-experience .agent-hero p{font-size:15px;line-height:22px}.llm-experience .agent-core-label{font-size:9px}
- .llm-experience .agent-chat-header{padding:8px 10px}.llm-experience .agent-chat-dock{padding:8px}.llm-experience .agent-conversation{padding:10px;gap:14px}
- .llm-experience .agent-composer{gap:8px;padding:5px 6px 5px 10px}.llm-experience .agent-composer>svg{display:none}.llm-experience .agent-composer textarea{font-size:16px;resize:none}.llm-experience .agent-composer>button{min-height:44px;font-size:11px;padding:8px 10px}.llm-experience .agent-data-note{font-size:10px;line-height:16px}
+ .llm-experience .agent-chat-header{padding:8px 10px}.llm-experience .agent-chat-panel[data-expanded=true] .agent-chat-dock{padding:8px}.llm-experience .agent-conversation{padding:10px;gap:14px}
+ .llm-experience .agent-composer{gap:10px;padding:12px;flex-wrap:wrap}.llm-experience .agent-composer textarea{font-size:16px;min-height:64px;resize:none;flex-basis:calc(100% - 34px)}.llm-experience .agent-composer>button{margin-left:auto;min-height:44px;font-size:11px;padding:8px 16px}.llm-experience .agent-data-note{font-size:10px;line-height:16px}
+ .llm-experience .agent-chat-panel[data-expanded=true] .agent-composer{gap:8px;padding:5px 6px 5px 10px;flex-wrap:nowrap}.llm-experience .agent-chat-panel[data-expanded=true] .agent-composer>svg{display:none}.llm-experience .agent-chat-panel[data-expanded=true] textarea{min-height:36px;flex-basis:0}.llm-experience .agent-chat-panel[data-expanded=true] .agent-send{padding-inline:10px}
  .llm-experience .agent-quick-actions{gap:10px;margin:24px 0 30px}.llm-experience .agent-quick-actions>button{padding:12px}.llm-experience .agent-quick-actions>button>div{gap:6px;flex-wrap:wrap}.llm-experience .agent-quick-actions strong{font-size:13px;line-height:18px;flex-basis:80%}.llm-experience .agent-quick-actions svg:last-child{display:none}.llm-experience .agent-quick-actions p{font-size:11px;line-height:16px}
  .llm-experience .agent-user-message{max-width:90%;padding:13px 16px;font-size:14px}.llm-experience .agent-response-card{padding:20px 16px;gap:16px}.llm-experience .agent-response-card>header{gap:10px;align-items:flex-start}.llm-experience .agent-response-card h2{font-size:18px;line-height:24px}.llm-experience .agent-response-card>header p{font-size:11px;line-height:16px}.llm-experience .agent-reply{font-size:14px;line-height:21px}
  .llm-experience .agent-allocations{padding:12px}.llm-experience .agent-allocation-heading{font-size:9px;align-items:flex-start}.llm-experience .agent-allocation-heading>span:last-child{max-width:50%;text-align:right}.llm-experience .agent-allocation-row{gap:10px;flex-wrap:wrap}.llm-experience .agent-allocation-row strong{font-size:14px}.llm-experience .agent-allocation-row>strong,.llm-experience .agent-share-value>strong{font-size:17px}.llm-experience .agent-peer-avatar{width:26px;height:26px;font-size:10px}.llm-experience .agent-share-value{max-width:100%;margin-left:auto}.llm-experience .agent-rule{font-size:9px}

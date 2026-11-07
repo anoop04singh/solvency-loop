@@ -17,6 +17,8 @@ test('one wallet approval authorizes payload-bound temporary requests, not anoth
   const learn={action:'agent_chat' as const,walletAddress:wallet,text:'I prefer to split dinner equally',threadId:'test-thread-00000001',timeZone:'UTC',autoMemory:true};
   const learnedRequest=await authorizeMemoryRequest(learn,sign);
   await verifyMemoryEnvelope(learnedRequest,origin);assert.equal(prompts,1);
+  const pending=await authorizeMemoryRequest({...learn,text:'What are my pending splits?',autoMemory:false},sign);
+  await verifyMemoryEnvelope(pending,origin);assert.equal(prompts,1);
   await assert.rejects(verifyMemoryEnvelope({...learnedRequest,delegation:undefined},origin),/Quiet Memory authorization/);
   const clock=Date.now;
   try{

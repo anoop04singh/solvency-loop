@@ -7,6 +7,7 @@ import {validatePayload,memorySigningMessage,type MemoryPayload} from '../src/li
 import {DAY_MS} from '../src/lib/financial-insights';
 import {LEARNED_MARKER,learnedNamespace,latestLearnedPreferences,selectLearningChoices} from '../src/lib/agent-learning';
 import {decodeBillTitle,encodeBillTitle,recentBillCategories} from '../src/lib/bill-category';
+import {bindSplitContact,prepareContinuedSplit} from '../src/lib/split-continuation';
 const address=(n:number)=>'0x'+n.toString(16).padStart(64,'0');
 const owner=address(1),friend=address(2),account=address(4),threadId='test-thread-00000001',nonce='test-agent-nonce-0001';
 const now=Date.now();
@@ -115,6 +116,59 @@ test('signed ordinary chat recalls owned memory without writes or event imports'
   const f=service();if(failure==='access')f.deps.access=async()=>{throw Error('Access revoked');};if(failure==='recall')f.client.recall=async()=>{throw Error('Recall failed');};if(failure==='gemini')f.deps.agent!.generate=async()=>{throw Error('Gemini failed');};
   await assert.rejects(executeMemoryRequest(request,nonce,f.deps));assert.equal(f.writes.length,0);if(['access','recall'].includes(failure))assert.ok(!f.calls.includes('gemini'));
  }
+});
+test('pending splits are read from Sui without calling Gemini or creating a Walrus client',async()=>{
+ const f=service();
+ f.deps.client=()=>{throw Error('A pending-split lookup should not touch Walrus');};
+ f.deps.agent!.generate=async()=>{throw Error('A pending-split lookup should not use Gemini');};
+ f.deps.agent!.splits=async()=>[{splitId:address(6),creator:friend,title:'Train fare',totalBillUsdc:1,creatorShareUsdc:0.5,createdAtMs:now-1,fundingDeadlineMs:now+60_000,isActive:true,isCancelled:false,pendingUpfront:0,participants:[{debtor:owner,amountOwedUsdc:0.5,requiresUpfrontEscrow:false,isFunded:false,isSettled:false,settledAtMs:0}]}];
+ const result=await executeMemoryRequest({...request,text:'What are my pending splits?',autoMemory:true,autoExecute:true,allowanceEpoch:'0'},nonce,f.deps,{background:{expiresAt:now+60_000,schedule:()=>{throw Error('Read-only queries should never schedule writes');}}});
+ assert.deepEqual(f.calls,['access']);
+ assert.equal(result.agent?.action.kind,'none');
+ assert.match(result.agent!.reply,/Train fare · Your share is 0\.50 USDC · unpaid/);
+ assert.deepEqual(result.createdMemories,[]);
+ assert.equal(result.memories,undefined);
+});
+test('a status question cannot enter automatic execution even if Gemini outputs execute',async()=>{
+ const f=service();
+ f.deps.agent!.generate=async()=>split({executionMode:'execute'});
+ f.deps.autonomy=async()=>{throw Error('A question cannot enter funded execution');};
+ const result=await executeMemoryRequest({...request,text:'What would my dinner split look like?',autoMemory:true,autoExecute:true,allowanceEpoch:'0'},nonce,f.deps);
+ assert.equal(result.agent?.executionEligible,false);
+ assert.equal(result.execution,undefined);
+ assert.deepEqual(f.writes,[]);
+});
+test('a split keeps its amount through contact confirmation and category follow-ups without writing a transcript',async()=>{
+ const f=service(),newWallet=address(6),tasks:(()=>Promise<void>)[]=[];
+ f.deps.agent!.generate=async()=>({action:'clarify',reply:'Who should be included?'});
+ const options={background:{expiresAt:Date.now()+60_000,schedule:(task:()=>Promise<void>)=>tasks.push(task)}};
+ const chat={...request,autoMemory:true};
+ const first=await executeMemoryRequest({...chat,text:'split 0.5 between me and snoop'},nonce,f.deps,options);
+ assert.deepEqual(first.agent?.pendingSplit,{amount:'0.5',people:['snoop'],title:'Shared expense',category:'other'});
+ assert.match(first.agent!.reply,/full Sui wallet address for snoop/);
+ f.deps.agent!.generate=async()=>{throw Error('These follow-ups should use the typed draft');};
+ const second=await executeMemoryRequest({...chat,text:newWallet,pendingSplit:first.agent!.pendingSplit},'test-agent-nonce-0002',f.deps,options);
+ assert.deepEqual(second.agent?.action,{kind:'contact',handle:'snoop',walletAddress:newWallet});
+ assert.equal(second.agent?.executionEligible,false);
+ const pending=bindSplitContact(second.agent!.pendingSplit!,'snoop',newWallet);
+ assert.equal(prepareContinuedSplit(pending,f.c).action.kind,'none');
+ f.c.profile.contacts.push({handle:'snoop',walletAddress:newWallet});
+ const resumed=prepareContinuedSplit(pending,f.c).action;
+ assert.equal(resumed.kind,'split');
+ if(resumed.kind==='split'){
+  assert.equal(resumed.allocation.creatorShare,0.25);
+  assert.equal(resumed.allocation.shares[0].amountUsdc,0.25);
+ }
+ const prompted=await executeMemoryRequest({...chat,text:'Make the split',pendingSplit:pending},'test-agent-nonce-0003',f.deps,options);
+ assert.equal(prompted.agent?.action.kind,'split');
+ const categorized=await executeMemoryRequest({...chat,text:'Travel',pendingSplit:prompted.agent?.pendingSplit},'test-agent-nonce-0004',f.deps,options);
+ const action=categorized.agent?.action;
+ assert.equal(action?.kind,'split');
+ if(action?.kind==='split'){assert.equal(action.draft.category,'travel');assert.equal(action.draft.total,'0.5');assert.equal(action.draft.people[0].walletAddress,newWallet);}
+ assert.equal(categorized.agent?.executionEligible,false);
+ assert.deepEqual(f.writes,[]);
+ assert.deepEqual(tasks,[]);
+ assert.throws(()=>validatePayload({...chat,pendingSplit:pending,autoExecute:true,allowanceEpoch:'0'}),/pending split/);
 });
 test('agent signatures bind text, conversation and timezone; secret-like messages are refused',()=>{
  assert.deepEqual(validatePayload(request),request);const e={payload:request,issuedAt:now,nonce,origin:'http://127.0.0.1:3000'};

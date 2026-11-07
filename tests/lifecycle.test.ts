@@ -44,8 +44,13 @@ test('empty learning is valid, bounded history exposes a continuation and failur
  f.setFailRecall(true);await assert.rejects(executeMemoryRequest({action:'refresh_learning',walletAddress:owner},'failure',f.deps),/relayer unavailable/);
  const broken=fixture();broken.add(0,60000);broken.setMissingBlob();await assert.rejects(executeMemoryRequest({action:'settlement',walletAddress:payer,digest:String((broken.events[0].id as {txDigest:string}).txDigest)},'missing',broken.deps),/committed Walrus blob/);
 });
-test('Smart Fill resolves current on-chain contacts and returns a draft with fresh owned learning',async()=>{
- const f=fixture();const result=await executeMemoryRequest({action:'smart_split',walletAddress:owner,text:'Paid 16.50 at My receipt (11.50 food, 5 drinks) with Saved contact'},'smart',f.deps);
+test('sign-in recall and Smart Fill read without publishing or importing history',async()=>{
+ const f=fixture();
+ f.deps.events=async()=>{throw Error('A read must not import events');};
+ f.deps.social=async(_state,_client,publish)=>{assert.equal(publish,false);return {publicPreferences:[],groups:[],networkSettlements:[],memories:[]};};
+ await executeMemoryRequest({action:'recall_all',walletAddress:owner},'sign-in',f.deps);
+ f.recalls.length=0;
+ const result=await executeMemoryRequest({action:'smart_split',walletAddress:owner,text:'Paid 16.50 at My receipt (11.50 food, 5 drinks) with Saved contact'},'smart',f.deps);
  assert.equal(result.draft?.title,'My receipt');assert.equal(result.draft?.people[0].walletAddress,payer);assert.equal(result.draft?.total,'16.50');assert.deepEqual(f.recalls,[learnedNamespace(owner),...CATEGORIES]);assert.equal(f.writes.length,0);
  await assert.rejects(executeMemoryRequest({action:'smart_split',walletAddress:owner,text:'Paid 16.50 at My receipt with Unknown contact'},'unknown',f.deps),/unambiguous saved contact/);
 });

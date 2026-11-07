@@ -13,6 +13,8 @@ import { verifyRecalledSettlements } from './memory-evidence';
 import type {MemoryResponse} from './memory-api';
 import {parseBillDraft} from './bill-draft';
 import {createAgentTurn} from './agent-service';
+import {GEMINI_MODEL,type AgentTurn} from './agent-types';
+import {isAgentReadQuestion,isPendingSplitsQuestion,pendingSplitsReply} from './agent-questions';
 import {loadSocialContext,type SocialContext} from './social-memory';
 import {LEARNED_MARKER,LEARNED_QUERY,learnedNamespace,learningKey,latestLearnedPreferences,type LearningChoice} from './agent-learning';
 import {commitMemoryBatch} from './memory-batch';
@@ -77,7 +79,7 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
   const recallAll = async (committed: RecalledMemory[] = []) => {
     const socialClient=scopedClient('social_split_trust');
     const [social,learning,results]=await Promise.all([
-      deps.social?.(state,socialClient,p.action!=='agent_chat'),
+      deps.social?.(state,socialClient,p.action==='refresh_learning'),
       recallLearning(socialClient),
       Promise.all(CATEGORIES.map(async cat => {
         const queries={social_split_trust:'SOLVENCY_RULE_V1 SOLVENCY_SETTLEMENT_V1 SOLVENCY_AGENT_V1 conversations alcohol exclusions payment preferences settlement history',habit_regret:'SOLVENCY_PURCHASE_V1 SOLVENCY_REGRET_V1 purchase check-in regret reflections',cashflow_elasticity:'SOLVENCY_CASHFLOW_V1 balance liquidity cashflow local time regret'};
@@ -92,6 +94,15 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     return { memories,...verified,verifiedSettlements:[...verified.verifiedSettlements,...social?.networkSettlements||[]],publicPreferences:social?.publicPreferences||[],groups:social?.groups||[],tatumAnchor: anchor };
   };
   if (p.action === 'recall_all') return recallAll();
+  if(p.action==='smart_split'){
+    const draft=parseBillDraft(p.text!,state.contacts,wallet);
+    return {status:'READY',draft,...await recallAll()};
+  }
+  if(p.action==='agent_chat'&&!p.incomingSplitId&&isPendingSplitsQuestion(p.text!)){
+    const page=deps.agent?{splits:await deps.agent.splits(),nextCursor:null}:await fetchGroupSplitPageViaTatum(wallet);
+    const agent:AgentTurn={id:nonce,threadId:p.threadId!,owner:wallet,user:p.text!,reply:pendingSplitsReply(wallet,page.splits,!!page.nextCursor),action:{kind:'none'},createdAtMs:Date.now(),checkpoint:state.latestCheckpoint,model:GEMINI_MODEL,contextBlobIds:[],blobId:'',...(p.pendingSplit?{pendingSplit:p.pendingSplit}:{})};
+    return {status:'READY',agent,createdMemories:[],tatumAnchor:anchor};
+  }
   const client = scopedClient(category);
   if(p.action==='recall_learning')return {learnedMemories:await recallLearning(scopedClient('social_split_trust'))};
   if(p.action==='edit_learning'){
@@ -161,6 +172,8 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     return {status:'COMMITTED',createdMemories:[{blob_id:first.blob_id,text,namespace:getWalletNamespace(wallet,'habit_regret'),category:'habit_regret' as const},{blob_id:second.blob_id,text:cashflowText,namespace:getWalletNamespace(wallet,'cashflow_elasticity'),category:'cashflow_elasticity' as const}],tatumAnchor:anchor};
   }
   if(p.action==='agent_chat'){
+    const readQuestion=!p.incomingSplitId&&isAgentReadQuestion(p.text!);
+    const autoExecute=p.autoExecute===true&&!readQuestion,autoMemory=p.autoMemory===true&&!readQuestion;
     const [recalled,splits,vaults]=await Promise.all([
       recallAll(),
       deps.agent?deps.agent.splits():fetchGroupSplitPageViaTatum(wallet).then(r=>r.splits),
@@ -171,9 +184,16 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
       splits.unshift(incoming);
     }
     const allowance=deps.agent?.allowance?await deps.agent.allowance():autopilotConfig()&&!deps.agent?(await fetchAutopilotState(wallet)).vault:null;
-    if(p.autoExecute&&(!allowance||allowance.epoch!==p.allowanceEpoch))throw Error('The allowance policy changed. Refresh before a new automatic command.');
-    const context={autonomyRequested:p.autoExecute===true,memoryAutomationRequested:p.autoMemory===true,profile:state,memories:recalled.memories,verifiedSettlements:recalled.verifiedSettlements,publicPreferences:recalled.publicPreferences,groups:recalled.groups,allowance,splits:splits.slice(0,30),vaults:vaults.slice(0,30),now:Date.now(),timeZone:p.timeZone!};
-    const {turn,choices}=await createAgentTurn({text:p.text!,threadId:p.threadId!,nonce,source:p.incomingSplitId?'autopilot':'user',conversation:p.conversation,context,generate:deps.agent?.generate});
+    if(autoExecute&&(!allowance||allowance.epoch!==p.allowanceEpoch))throw Error('The allowance policy changed. Refresh before a new automatic command.');
+    const context={autonomyRequested:autoExecute,memoryAutomationRequested:autoMemory,profile:state,memories:recalled.memories,verifiedSettlements:recalled.verifiedSettlements,publicPreferences:recalled.publicPreferences,groups:recalled.groups,allowance,splits:splits.slice(0,30),vaults:vaults.slice(0,30),now:Date.now(),timeZone:p.timeZone!};
+    const {turn,choices}=await createAgentTurn({text:p.text!,threadId:p.threadId!,nonce,source:p.incomingSplitId?'autopilot':'user',conversation:p.conversation,pendingSplit:p.pendingSplit,context,generate:deps.agent?.generate});
+    if(readQuestion){
+      turn.executionEligible=false;
+      if(turn.action.kind==='memory'){
+        turn.action={kind:'none'};
+        turn.reply='Which bill or saved preference would you like me to check?';
+      }
+    }
     const action=turn.action;
     if(p.incomingSplitId){
       const allowed=p.incomingOperation==='activate'?action.kind==='activate'&&action.splitId===p.incomingSplitId:(action.kind==='fund'&&action.splitId===p.incomingSplitId)||(action.kind==='settle'&&action.splitIds.length===1&&action.splitIds[0]===p.incomingSplitId);
@@ -183,11 +203,11 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     let execution:MemoryResponse['execution'],agentMemorySaved=false;
     const background=work.background;
     const explicitMemoryCommand=/^\s*(?:please\s+)?(?:remember|save|record|log|rate|mark|set)\b/i.test(p.text!)&&!/[?"“”]/u.test(p.text!)&&!/\b(?:if|example|suppose|pretend)\b/i.test(p.text!);
-    if(p.autoMemory&&turn.executionEligible&&action.kind==='memory'&&explicitMemoryCommand&&Date.now()<(background?.expiresAt??Infinity)){
+    if(autoMemory&&turn.executionEligible&&action.kind==='memory'&&explicitMemoryCommand&&Date.now()<(background?.expiresAt??Infinity)){
       const saved:MemoryResponse=await executeRequestWithDeps({...action.payload,walletAddress:wallet,sessionAccountId:p.sessionAccountId},await autopilotRequestId(wallet,'memory:'+nonce),deps);
       committed.push(...saved.createdMemories||[]);
       agentMemorySaved=true;
-    }else if(p.autoExecute&&turn.executionEligible&&['split','protect','settle','fund','activate'].includes(action.kind)){
+    }else if(autoExecute&&turn.executionEligible&&['split','protect','settle','fund','activate'].includes(action.kind)){
       if(!deps.autonomy)throw Error('Autonomous execution is unavailable.');
       const client=scopedClient('social_split_trust');
       if(!client.rememberBulkAndWait)throw Error('MemWal bulk writes are required.');
@@ -204,7 +224,7 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
         catch{execution={...done.execution,warning:[done.execution.warning,'Some incoming automatic payments need event-delivery retry.'].filter(Boolean).join(' ')};}
       }
     }
-    if(p.autoMemory&&background&&choices.length){
+    if(autoMemory&&background&&choices.length){
       background.schedule(async()=>{
         if(Date.now()>=background.expiresAt)return;
         let fresh:MemoryClient|undefined;
@@ -222,8 +242,7 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     }
     return {status:turn.blobId||agentMemorySaved?'COMMITTED':'READY',...recalled,agent:turn,execution,agentMemorySaved,createdMemories:committed};
   }
-  if (p.action === 'settlement' || p.action === 'sync_settlements' || p.action === 'refresh_learning' || p.action === 'smart_split') {
-    const draft=p.action==='smart_split'?parseBillDraft(p.text!,state.contacts,wallet):undefined;
+  if (p.action === 'settlement' || p.action === 'sync_settlements' || p.action === 'refresh_learning') {
     const { packageId } = contractConfig();
     const createdMemories: RecalledMemory[] = [];
     const rememberTransaction = async (digest: string, selectedEvents?: Set<string>) => {
@@ -256,7 +275,7 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     }
     let cursor=p.cursor, count=0, scanned=0, nextCursor:typeof p.cursor|null=null;
     const cursors=new Set<string>();
-    for(let pageIndex=0;pageIndex<(['refresh_learning','smart_split'].includes(p.action)?4:1);pageIndex++){
+    for(let pageIndex=0;pageIndex<(p.action==='refresh_learning'?4:1);pageIndex++){
       const page=await deps.events({query:{MoveEventType:packageId+'::core::ShareSettledEvent'},cursor,limit:5,order:'descending'});
       const key=page.nextCursor?JSON.stringify(page.nextCursor):'';
       if(page.hasNextPage&&(!page.nextCursor||cursors.has(key)||(page.nextCursor.txDigest===cursor?.txDigest&&page.nextCursor.eventSeq===cursor?.eventSeq)))throw new Error('Settlement history pagination did not advance.');
@@ -271,7 +290,7 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
       if(!nextCursor)break;
       cursor=nextCursor;
     }
-    return {status:'COMMITTED',count,scanned,createdMemories,nextCursor,...(draft?{draft}:{}),...(['refresh_learning','smart_split'].includes(p.action)?await recallAll(createdMemories):{tatumAnchor:anchor})};
+    return {status:'COMMITTED',count,scanned,createdMemories,nextCursor,...(p.action==='refresh_learning'?await recallAll(createdMemories):{tatumAnchor:anchor})};
   }
   throw new Error('Unsupported action.');
 }

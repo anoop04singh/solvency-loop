@@ -19,13 +19,20 @@ test('funded confirmed responses show actual receipt status while Draft only pre
 });
 test('chat starts blank, renders a tab-only proposal and requires separate review before wallet approval',async({page,request})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await openAgent(page,request);
- await expect(page.getByRole('textbox',{name:'Message SolvencyLoop'})).toHaveValue('');await expect(page.locator('.agent-response-card')).toHaveCount(0);await expect(page.getByRole('button',{name:'Ask agent',exact:true})).toBeDisabled();
+ const input=page.getByRole('textbox',{name:'Message SolvencyLoop'});
+ await expect(input).toHaveValue('');await expect(page.getByRole('log')).toHaveCount(0);await expect(page.getByRole('button',{name:'Ask agent',exact:true})).toBeDisabled();
+ await input.fill('My actual dinner request with Casey');
+ await expect(page.getByRole('log')).toHaveCount(0);
+ await input.clear();
  await page.screenshot({path:'test-results/agent-desktop-empty.png',fullPage:true});await send(page);
  await expect(page.getByRole('button',{name:'Inspect Walrus proof',exact:true})).toHaveCount(0);
  await expect(page.locator('.agent-allocations')).toContainText('16.500001 USDC total');await expect(page.locator('.agent-allocation-row').filter({hasText:'You'})).toContainText('8.250001 USDC');
- expect(await page.evaluate(()=>window.__agentConfirmed)).toBeUndefined();await page.getByRole('button',{name:'Review split',exact:true}).click();await expect(page.getByRole('dialog',{name:'Review split?'})).toBeVisible();
+ expect(await page.evaluate(()=>window.__agentConfirmed)).toBeUndefined();await page.getByRole('button',{name:'Review split',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Review split?'});await expect(dialog).toBeVisible();
+ await expect(dialog.getByLabel('Bill title')).toHaveValue('Fixture user dinner');await dialog.getByLabel('Bill title').fill('Travel tickets');await dialog.getByLabel('Bill category').selectOption('travel');
+ await expect(dialog.locator('.agent-bill-total')).toContainText('Travel tickets');await expect(dialog.locator('.agent-bill-total')).toContainText('Travel & transport');
  expect(await page.evaluate(()=>window.__agentConfirmed)).toBeUndefined();await page.screenshot({path:'test-results/agent-review-dialog.png',fullPage:true});
- await page.getByRole('button',{name:'Continue to wallet',exact:true}).click();await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.locator('.agent-response-card')).toContainText('Confirmed on Sui');
+ await page.getByRole('button',{name:'Create split',exact:true}).click();await expect(page.getByRole('dialog')).not.toBeVisible();await expect(page.locator('.agent-response-card')).toContainText('Confirmed on Sui');
+ expect(await page.evaluate(()=>window.__agentSplitReview)).toEqual({title:'Travel tickets',category:'travel'});
  await expect(page.getByRole('button',{name:'Review split',exact:true})).toHaveCount(0);expect(errors).toEqual([]);
 });
 test('composer signals a pending reply and retains the message for retry after a Gemini error',async({page,request})=>{
@@ -37,6 +44,10 @@ test('composer signals a pending reply and retains the message for retry after a
  await input.press('Enter');
  const waiting=composer.getByRole('button',{name:'Waiting…',exact:true});
  await expect(waiting).toBeDisabled();await expect(composer).toHaveAttribute('aria-busy','true');
+ const panel=page.getByRole('region',{name:'Conversation',exact:true});
+ await expect(panel).toHaveCSS('backdrop-filter','blur(18px)');
+ await expect(panel).toHaveCSS('background-color','rgba(255, 255, 255, 0.57)');
+ await expect(panel.locator('.agent-chat-reveal')).toHaveCSS('animation-name','none');
  expect((await waiting.boundingBox())?.width).toBe(before?.width);
  await expect(composer.locator('.agent-send-spinner')).toHaveCSS('animation-name','none');
  await expect(page.locator('.agent-response-card')).toHaveCount(0);await expect(input).toBeDisabled();
@@ -51,9 +62,9 @@ test('a clarification and its reply box stay together on a small screen',async({
  await page.setViewportSize({width:360,height:680});
  await openAgent(page,request);
  const chat=page.getByRole('region',{name:'Conversation',exact:true}),log=chat.getByRole('log');
- const input=chat.getByRole('textbox',{name:'Message SolvencyLoop'});
+ const input=page.getByRole('textbox',{name:'Message SolvencyLoop'});
  await input.fill('Split dinner with an unknown contact');
- await chat.getByRole('button',{name:'Ask agent',exact:true}).click();
+ await page.getByRole('button',{name:'Ask agent',exact:true}).click();
  await expect(log.getByText('Which saved contact should share this bill?')).toBeInViewport({ratio:1});
  await expect(input).toBeInViewport({ratio:1});
  await expect(input).toHaveAttribute('placeholder','Reply to SolvencyLoop…');
@@ -69,12 +80,12 @@ test('restored proposals cannot execute; manual editing and workspace navigation
  await openAgent(page,request);await send(page);await page.getByText('Isolated agent fixture controls').click();await page.getByLabel('Restored conversation only').check();await expect(page.getByRole('button',{name:'Review split',exact:true})).toHaveCount(0);await expect(page.getByText('Ask again to prepare a fresh action.')).toBeVisible();
  await page.getByRole('button',{name:'Edit items manually',exact:true}).click();await expect(page.getByRole('heading',{name:'Fixture user dinner',exact:true})).toBeVisible();expect(await page.evaluate(()=>window.__agentEdited)).toBe('fixture-turn-0');
  await page.getByRole('button',{name:'Agent',exact:true}).click();await expect(page.locator('.agent-response-card')).toHaveCount(1);
- await page.getByRole('button',{name:'New conversation',exact:true}).click();await expect(page.locator('.agent-response-card')).toHaveCount(0);
+ await page.getByRole('button',{name:'New conversation',exact:true}).click();await expect(page.getByRole('log')).toHaveCount(0);
  await page.getByRole('button',{name:/Cooldown Vault/}).click();await expect(page.getByText('Savings manual workspace selected')).toBeVisible();
 });
 test('mobile agent layout and allocations fit without horizontal scrolling',async({page,request})=>{
  await page.setViewportSize({width:360,height:800});await openAgent(page,request);await send(page);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);await expect(page.getByRole('button',{name:'Review split',exact:true})).toBeEnabled();await expect(page.locator('.agent-conversation article').last()).toHaveCSS('opacity','1');await page.screenshot({path:'test-results/agent-mobile-conversation.png',fullPage:true});
- await page.getByRole('button',{name:'Review split',exact:true}).click();await expect(page.getByRole('button',{name:'Continue to wallet',exact:true})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+ await page.getByRole('button',{name:'Review split',exact:true}).click();await expect(page.getByRole('button',{name:'Create split',exact:true})).toBeInViewport();expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 });
 test('Audit exposes committed preferences, correction and stop using',async({page,request})=>{
  await openAgent(page,request);

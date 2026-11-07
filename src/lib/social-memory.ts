@@ -16,7 +16,7 @@ export function publicBillBenchmarks(bills:{id:string;title:string;totalUnits:st
  return [...groups.values()].filter(g=>g.length>=3).map(g=>{const amounts=g.map(b=>BigInt(b.totalUnits)/BigInt(b.people));return {label:g[0].title,count:g.length,meanPerParticipantUnits:(amounts.reduce((n,x)=>n+x,0n)/BigInt(amounts.length)).toString(),minPerParticipantUnits:amounts.reduce((n,x)=>n<x?n:x).toString(),maxPerParticipantUnits:amounts.reduce((n,x)=>n>x?n:x).toString(),sourceSplitIds:g.map(b=>b.id),method:'Observed public bill total divided by participant count; titles are not verified merchant identities.'};});
 }
 export interface SocialContext {publicPreferences:PublicSocialPreference[];groups:GroupConvention[];networkSettlements:VerifiedSettlement[];memories:RecalledMemory[];}
-export async function loadSocialContext(profile:OnChainUserProfile,client:Pick<MemWal,'recall'|'rememberBulkAndWait'>,publish=true):Promise<SocialContext>{
+export async function loadSocialContext(profile:OnChainUserProfile,client:Pick<MemWal,'recall'|'rememberBulkAndWait'>,publish=false):Promise<SocialContext>{
  const empty:SocialContext={publicPreferences:[],groups:[],networkSettlements:[],memories:[]},c=autopilotConfig();if(!c)return empty;
  const directory=await autopilotObject(c.directoryId,'AgentDirectory'),publicPreferences:PublicSocialPreference[]=[];
  for(let i=0;i<profile.contacts.length;i+=8){const rows=await Promise.all(profile.contacts.slice(i,i+8).map(p=>fetchPublicPreference(p.walletAddress,directory)));publicPreferences.push(...rows.filter((p):p is PublicSocialPreference=>!!p&&p.active));}

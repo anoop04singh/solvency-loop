@@ -1,10 +1,12 @@
 import type {BillDraft} from './bill-draft';
-import {isBillCategory} from './bill-category';
+import {isBillCategory,type BillCategory} from './bill-category';
 import type {computeExpense} from './expense';
 import type {MemoryPayload,RecalledMemory} from './memory-protocol';
 import {memoryRecord} from './financial-insights';
+import type {SplitContinuation} from './split-continuation';
 export const GEMINI_MODEL='gemini-3.5-flash-lite';
 export class AgentReplyError extends Error {}
+export interface SplitReviewDetails {title:string;category:BillCategory;}
 export type AgentAction=
  | {kind:'split';draft:BillDraft;allocation:ReturnType<typeof computeExpense>}
  | {kind:'protect';amount:string}
@@ -15,7 +17,7 @@ export type AgentAction=
  | {kind:'memory';payload:Omit<MemoryPayload,'walletAddress'>;summary:string}
  | {kind:'contact';handle:string;walletAddress:string}
  | {kind:'none'};
-export interface AgentTurn {id:string;threadId:string;owner:string;user:string;reply:string;action:AgentAction;createdAtMs:number;checkpoint:string;model:string;contextBlobIds:string[];blobId:string;source?:'user'|'autopilot';executionEligible?:boolean;}
+export interface AgentTurn {id:string;threadId:string;owner:string;user:string;reply:string;action:AgentAction;createdAtMs:number;checkpoint:string;model:string;contextBlobIds:string[];blobId:string;source?:'user'|'autopilot';executionEligible?:boolean;pendingSplit?:SplitContinuation;}
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const string=(v:unknown,max=4000):v is string=>typeof v==='string'&&v.length>0&&v.length<=max;
 const strings=(v:unknown,max=64):v is string[]=>Array.isArray(v)&&v.length<=max&&v.every(x=>string(x));

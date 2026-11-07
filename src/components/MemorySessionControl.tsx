@@ -18,7 +18,7 @@ export function MemorySessionControl(p:{wallet:string;accountId:string;now:numbe
   }catch(e){setError((e as Error).message);}finally{setBusy(false);}
  }
  return <div className="agent-session-controls">
-  <div><ShieldCheck size={15}/><span>{enabled?'Quiet memory is on':p.chosen?'Individual memory approvals':'Choose how to authorize memory'}</span></div>
+  <div><ShieldCheck size={15}/><span>{enabled?session.expiresAt<=p.now?'Quiet memory renews on your next request':'Quiet memory is on':p.chosen?'Individual memory approvals':'Choose how to authorize memory'}</span></div>
   <div>{!enabled&&<button className="agent-text-button" disabled={p.disabled} onClick={()=>{setConsent(false);setError('');setOpen(true);}}><Fingerprint size={14}/>Enable quiet memory</button>}
   <button className="agent-text-button" disabled={p.disabled} onClick={p.onIndividual}>{enabled?'Turn off quiet memory':'Use individual approvals'}</button></div>
   <StepDialog open={open} title="Quiet memory" question="Keep quiet memory on in this tab?" stepKey="memory-consent" onClose={()=>setOpen(false)} onNext={()=>void authorize()} canNext={consent&&!p.disabled} busy={busy} error={error} nextLabel="Authorize once with my wallet" hint="A temporary browser key is discarded when you turn quiet memory off, reload, or change wallets.">
