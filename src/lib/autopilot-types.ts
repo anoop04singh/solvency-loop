@@ -9,3 +9,8 @@ export interface AllowancePolicy {budget:string;perTx:string;daily:string;days:n
 export interface AgentExecution {state:'confirmed'|'submitted'|'review_required';digest?:string;requestId:string;kind:string;warning?:string;}
 export function rollingSpend(v:AgentAllowance,now=Date.now()){return v.history.filter(h=>now-h.atMs<86400000).reduce((n,h)=>n+BigInt(h.amountUnits),0n);}
 export function allowanceRoom(v:AgentAllowance,now=Date.now()){const spent=rollingSpend(v,now),daily=BigInt(v.dailyUnits);return daily>spent?daily-spent:0n;}
+export function agentSpendingSummary(v:AgentAllowance,now=Date.now()){
+ const balance=BigInt(v.balanceUnits),daily=allowanceRoom(v,now),atActionLimit=v.history.filter(h=>now-h.atMs<86400000).length>=64;
+ const available=!v.active||v.expiresAtMs<=now||atActionLimit?0n:balance<daily?balance:daily;
+ return {balanceUnits:balance.toString(),availableUnits:available.toString(),perTxUnits:v.perTxUnits};
+}

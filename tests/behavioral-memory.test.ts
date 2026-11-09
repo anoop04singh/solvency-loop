@@ -56,6 +56,27 @@ test('due ratings commit both namespaces with original purchase context and live
  assert.match(writes[1].text,/"balanceUnits":"120000001"/);assert.match(writes[1].text,/"floorUnits":"20000000"/);
  assert.ok(writes.every(w=>w.accountId===account&&w.wallet===owner));
 });
+
+test('a creator rates a bill without a purchase-memory write and the server obtains their exact share from Sui',async()=>{
+ const {deps,writes}=setup();let cancelled=false,creator=owner,created=now-3*DAY_MS,type=owner+'::core::GroupSplitEscrow<'+SUI_MAINNET_USDC_TYPE+'>';
+ deps.object=(async()=>({data:{objectId:split,content:{dataType:'moveObject',type,fields:{
+  id:{id:split},creator,title:'[sl1:dining] Dinner',total_bill_amount:'10000000',creator_share:'3000001',created_at_ms:String(created),funding_deadline_ms:String(now+DAY_MS),is_active:true,is_cancelled:cancelled,pending_upfront:'0',
+  participants:{contents:[{key:friend,value:{debtor:friend,amount_owed:'6999999',requires_upfront_escrow:false,is_funded:false,is_settled:false,settled_at_ms:'0'}}]},
+ }}}})) as unknown as MemoryDependencies['object'];
+ const request:MemoryPayload={action:'regret_checkin',walletAddress:owner,purchaseId:split.slice(2),splitId:split,timeZone:'UTC',verdict:'regretted',intensity:4};
+ assert.equal(validatePayload(request),request);
+ for(const change of [{purchaseId:nonce},{timeZone:'Mars/Orbit'},{timeZone:undefined}])assert.throws(()=>validatePayload({...request,...change}));
+ for(const state of ['cancelled','foreign','early','token'] as const){
+  cancelled=state==='cancelled';creator=state==='foreign'?friend:owner;created=state==='early'?now-DAY_MS:now-3*DAY_MS;type=owner+'::core::GroupSplitEscrow<'+(state==='token'?'0x2::sui::SUI':SUI_MAINNET_USDC_TYPE)+'>';
+  await assert.rejects(executeMemoryRequest(request,nonce,deps));assert.equal(writes.length,0);
+ }
+ cancelled=false;creator=owner;created=now-3*DAY_MS;type=owner+'::core::GroupSplitEscrow<'+SUI_MAINNET_USDC_TYPE+'>';
+ const result=await executeMemoryRequest({...request,amountUsdc:'999',purchasedAtMs:1},nonce,deps);
+ assert.equal(result.createdMemories?.length,2);assert.deepEqual(writes.map(w=>w.category),['habit_regret','cashflow_elasticity']);
+ const record=JSON.parse(writes[0].text.split('SOLVENCY_REGRET_V1 ')[1]);
+ assert.equal(record.amountUnits,'3000001');assert.equal(record.merchant,'Dinner');assert.equal(record.category,'dining');assert.equal(record.purchasedAtMs,created);assert.equal(record.splitId,split);assert.equal(record.id,split.slice(2));
+ assert.ok(writes.every(w=>w.accountId===account&&w.wallet===owner));assert.ok(writes.every(w=>!w.text.includes('SOLVENCY_PURCHASE_V1')));
+});
 test('partial check-in commits and failed decryption produce explicit failure',async()=>{
  const {deps,client}=setup(),original=deps.client;
  deps.client=(wallet,category,accountId)=>category==='cashflow_elasticity'?{...client,rememberAndWait:async()=>{throw new Error('relayer unavailable');}}:original(wallet,category,accountId);

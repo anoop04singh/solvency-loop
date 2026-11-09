@@ -11,7 +11,7 @@ export interface MemoryPayload {
   subjectWallet?: string; upfrontAboveUsdc?: number; digest?: string; cursor?: SettlementCursor;
   excludeAlcohol?:boolean; fundingPolicy?:'always'|'adaptive'|'never';
   merchant?:string; merchantCategory?:MerchantCategory; amountUsdc?:string; purchasedAtMs?:number; timeZone?:string;
-  purchaseId?:string; verdict?:'regretted'|'worth_it'; intensity?:number;
+  purchaseId?:string; splitId?:string; verdict?:'regretted'|'worth_it'; intensity?:number;
   threadId?:string;
   conversation?:AgentExchange[];
   pendingSplit?:SplitContinuation;
@@ -64,6 +64,11 @@ export function validatePayload(value: unknown): MemoryPayload {
     if(typeof p.purchaseId!=='string'||!/^[a-zA-Z0-9-]{16,64}$/.test(p.purchaseId)||!['regretted','worth_it'].includes(String(p.verdict)))throw new Error('Choose a tracked purchase and a rating.');
     if(p.verdict==='regretted'&&(!Number.isInteger(p.intensity)||Number(p.intensity)<1||Number(p.intensity)>5))throw new Error('Regret intensity must be between 1 and 5.');
     if(p.verdict==='worth_it'&&p.intensity!==undefined&&p.intensity!==0)throw new Error('Worth-it ratings use zero regret intensity.');
+    if(p.splitId!==undefined){
+      if(requireAddress(p.splitId,'Bill ID').slice(2)!==p.purchaseId)throw new Error('The check-in must identify its exact bill.');
+      if(typeof p.timeZone!=='string'||p.timeZone.length>80)throw new Error('A valid time zone is required.');
+      try{new Intl.DateTimeFormat('en-US',{timeZone:p.timeZone});}catch{throw new Error('A valid time zone is required.');}
+    }
   }
   if (p.action === 'settlement' && (typeof p.digest !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{40,50}$/.test(p.digest))) throw new Error('A valid transaction digest is required.');
   if (p.cursor !== undefined && (!['sync_settlements','refresh_learning'].includes(p.action) || !p.cursor || typeof p.cursor.txDigest !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{40,50}$/.test(p.cursor.txDigest) || typeof p.cursor.eventSeq !== 'string' || !/^\d{1,20}$/.test(p.cursor.eventSeq))) throw new Error('Invalid settlement history cursor.');

@@ -14,6 +14,38 @@ async function openForms(page:Page,request:APIRequestContext){
  await page.goto('/__ui_preview');await expect(page.getByRole('heading',{name:'Split a bill',exact:true})).toBeVisible();await page.evaluate(()=>document.fonts.ready);
 }
 const next=(page:Page)=>page.getByRole('dialog').getByRole('button',{name:'Continue',exact:true}).click();
+
+test('spending bar labels every color and keeps funded agent spending separate from the wallet quota',async({page,request})=>{
+ await openForms(page,request);const legend=page.getByRole('list',{name:'Spending bar color key',exact:true});
+ for(const label of ['Wallet reserve','Unpaid shares','Safe to spend','Suggested shield'])await expect(legend).toContainText(label);
+ await expect(page.locator('.spending-number')).toContainText('$60.00');await page.getByLabel('Show funded agent allocation').check();
+ await expect(legend).toContainText('Funded agent allowance100.00 USDC');await expect(page.locator('.agent-spending-summary')).toContainText('30.00 USDC');
+ await expect(page.locator('.agent-spending-summary')).toContainText('25.00 USDC per transaction');await expect(page.locator('.spending-number')).toContainText('$60.00');
+ await expect(page.locator('.allocation-bar .allocation-agent')).toHaveCount(1);await page.screenshot({path:'test-results/spending-legend-autopilot.png',fullPage:true,animations:'disabled'});
+ await page.setViewportSize({width:360,height:800});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+ await page.screenshot({path:'test-results/spending-legend-autopilot-mobile.png',fullPage:true,animations:'disabled'});
+});
+
+test('created bills appear on Split Canvas and in check-ins with only the creator share',async({page,request})=>{
+ await page.emulateMedia({reducedMotion:'reduce'});await openForms(page,request);
+ const history=page.getByRole('region',{name:'Bills you created',exact:true});await expect(history.locator('article')).toHaveCount(1);
+ await expect(history).toContainText('Fixture creator bill');await expect(history).not.toContainText('Fixture shared bill');
+ await expect(history.locator('dl')).toContainText('Total bill12.00 USDC');await expect(history.locator('dl')).toContainText('Your share6.00 USDC');
+ expect(await page.evaluate(()=>window.__formResult)).toBeUndefined();
+ await history.getByRole('button',{name:'Open bill',exact:true}).click();await expect(page.getByRole('heading',{name:'Active Group Splits',exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>window.__formResult)).toEqual({openedBill:'0x'+'c'.padStart(64,'0')});
+ await page.getByRole('tab',{name:/Regret Check-In/}).click();const row=page.locator('.regret-panel .purchase-row').filter({hasText:'Fixture creator bill'});
+ await expect(row).toContainText('Created split · Your share');await expect(row).toContainText('6.00 USDC');await expect(row).not.toContainText('12.00 USDC');
+ await expect(row.getByRole('button',{name:'Worth It',exact:true})).toBeEnabled();await expect(page.locator('.regret-panel')).not.toContainText('Fixture shared bill');
+ await page.setViewportSize({width:360,height:800});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+ await row.scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/created-bill-checkin-mobile.png',animations:'disabled'});
+ await row.getByRole('button',{name:'Worth It',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog).toContainText('6.00 USDC');await expect(dialog).toContainText('rechecked on Sui');
+ await dialog.getByRole('button',{name:'Save to my memory',exact:true}).click();
+ expect(await page.evaluate(()=>window.__formResult)).toMatchObject({action:'regret_checkin',purchaseId:'c'.padStart(64,'0'),splitId:'0x'+'c'.padStart(64,'0'),verdict:'worth_it',intensity:0});
+ await expect(row).toHaveCount(0);await page.getByRole('button',{name:'Show all purchases',exact:true}).click();await expect(row).toContainText('Worth it · saved to your memory');
+ await page.getByRole('tab',{name:'Split a Bill',exact:true}).click();expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+ await history.scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/created-bill-history-mobile.png',animations:'disabled'});
+});
 async function person(page:Page,name='Casey'){
  const contact=page.getByRole('combobox',{name:'Add a saved contact'});
  await contact.fill(name);await contact.press('ArrowDown');await contact.press('Enter');

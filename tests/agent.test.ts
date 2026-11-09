@@ -105,6 +105,18 @@ function service(){
  const deps:MemoryDependencies={state:async()=>c.profile,access:async()=>{calls.push('access');return {accountId:account,owner,active:true,delegateAuthorized:true,delegateCount:1};},client:()=>client,transaction:async()=>{throw Error('Unexpected transaction read');},object:async()=>{throw Error('Unexpected object read');},events:async()=>({data:[],hasNextPage:false,nextCursor:null}),agent:{generate:async()=>{calls.push('gemini');return split();},splits:async()=>[],vaults:async()=>[]}};
  return {deps,client,calls,writes,c};
 }
+
+test('activity reports real parallel work and does not advance memory or Gemini while recall is pending',async()=>{
+ const f=service(),events:import('../src/lib/agent-progress').AgentProgress[]=[];
+ let release!:()=>void,started!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve;}),waiting=new Promise<void>(resolve=>{started=resolve;}),recall=f.client.recall;
+ f.client.recall=async p=>{started();await gate;return typeof p==='string'?recall(p):recall(p);};
+ const result=executeMemoryRequest(request,nonce,f.deps,{progress:event=>events.push(event)});
+ await waiting;assert.ok(events.some(e=>e.stage==='memory'&&e.state==='active'));assert.ok(!events.some(e=>e.stage==='memory'&&e.state==='complete'));assert.ok(!f.calls.includes('gemini'));
+ release();await result;
+ for(const stage of ['account','memory','evidence','bills','limits','reasoning','validation'])assert.ok(events.some(e=>e.stage===stage&&e.state==='complete'),stage);
+ assert.ok(!events.some(e=>['audit','execution','memory_write'].includes(e.stage)));assert.equal(f.writes.length,0);
+});
 test('signed ordinary chat recalls owned memory without writes or event imports',async()=>{
  const {deps,calls,writes,client}=service();
  client.analyzeAndWait=async()=>{throw Error('Chat text must not be analyzed by MemWal');};

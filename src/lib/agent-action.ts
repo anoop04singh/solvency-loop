@@ -4,7 +4,8 @@ import type {RecalledMemory} from './memory-protocol';
 import {requireAddress,CATEGORIES,type SolvencyNamespaceCategory} from './config';
 import {positiveUsdc,usdcToUnits,unitsToUsdc,formatUsdc} from './money';
 import {computeExpense,paymentPreferences,type ExpenseItem} from './expense';
-import {spendingRoom,purchaseMemories,CHECKIN_DELAY_MS,MERCHANT_CATEGORIES,type VerifiedSettlement,type MerchantCategory} from './financial-insights';
+import {spendingRoom,CHECKIN_DELAY_MS,MERCHANT_CATEGORIES,type VerifiedSettlement,type MerchantCategory} from './financial-insights';
+import {checkInPurchases} from './bill-purchases';
 import {allowanceRoom,type AgentAllowance,type GroupConvention,type PublicSocialPreference} from './autopilot-types';
 import type {AgentAction} from './agent-types';
 export interface AgentContext {autonomyRequested?:boolean;memoryAutomationRequested?:boolean;allowance?:AgentAllowance|null;groups?:GroupConvention[];publicPreferences?:PublicSocialPreference[];profile:OnChainUserProfile;memories:RecalledMemory[];verifiedSettlements:VerifiedSettlement[];splits:OnChainGroupSplit[];vaults:OnChainCooldownVault[];now:number;timeZone:string;}
@@ -67,9 +68,9 @@ export function prepareAgentAction(value:unknown,c:AgentContext):{action:AgentAc
   return {action:{kind:'memory',payload:{action:'record_purchase',merchant,merchantCategory:category,amountUsdc:value,purchasedAtMs,timeZone:c.timeZone},summary:merchant+' · '+value+' USDC · '+new Date(purchasedAtMs).toISOString()},reply:'Review this self-reported purchase. It is not an on-chain merchant payment. Your check-in opens 48 hours after the purchase.'};
  }
  if(kind==='checkin'){
-  const ids=list(r.ids,1),purchase=purchaseMemories(c.memories,c.profile.wallet).find(p=>p.id===ids[0]);if(!purchase||c.now<purchase.purchasedAtMs+CHECKIN_DELAY_MS)throw new Error('Choose an owned tracked purchase that is at least 48 hours old.');
+  const ids=list(r.ids,1),purchase=checkInPurchases(c.memories,c.profile.wallet,c.splits).find(p=>p.id===ids[0]);if(!purchase||c.now<purchase.purchasedAtMs+CHECKIN_DELAY_MS)throw new Error('Choose an owned tracked purchase or created bill that is at least 48 hours old.');
   if(!['regretted','worth_it'].includes(String(r.verdict))||(r.verdict==='regretted'&&(!Number.isInteger(r.intensity)||Number(r.intensity)<1||Number(r.intensity)>5)))throw new Error('Was it worth it or regretted? For regret, choose an intensity from 1 to 5.');
-  return {action:{kind:'memory',payload:{action:'regret_checkin',purchaseId:purchase.id,verdict:r.verdict as 'regretted'|'worth_it',intensity:r.verdict==='regretted'?Number(r.intensity):0},summary:purchase.merchant+' · '+String(r.verdict)+(r.verdict==='regretted'?' · '+r.intensity+'/5':'')},reply:'Review this check-in before saving it to your owned habit and cash-flow memory.'};
+  return {action:{kind:'memory',payload:{action:'regret_checkin',purchaseId:purchase.id,...(purchase.splitId?{splitId:purchase.splitId,timeZone:c.timeZone}:{}),verdict:r.verdict as 'regretted'|'worth_it',intensity:r.verdict==='regretted'?Number(r.intensity):0},summary:purchase.merchant+' · '+String(r.verdict)+(r.verdict==='regretted'?' · '+r.intensity+'/5':'')},reply:'Review this check-in before saving it to your owned habit and cash-flow memory.'};
  }
  if(kind==='preference'){
   const saved=contact(r.subject,c),existing=paymentPreferences(c.memories).get(saved.walletAddress),threshold=r.threshold===null||r.threshold===undefined?unitsToUsdc(existing?.threshold??40_000_000n):unitsToUsdc(usdcToUnits(text(r.threshold,'a funding threshold',40))),policy=r.policy??existing?.fundingPolicy??'adaptive';

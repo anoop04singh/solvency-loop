@@ -7,7 +7,7 @@ import {checkAllowance,buildDelegatedTransaction,executeAutonomousAction,type Ex
 import {autopilotRequestId} from '../src/lib/autopilot-request';
 import {verifyDeliverySignature,dispatchConfirmedBill,type DeliveryDependencies} from '../src/lib/autopilot-dispatch';
 import {autopilotParameters,assertAutopilotInterface,AUTOPILOT_FUNCTIONS} from '../src/lib/autopilot-interface';
-import {allowanceRoom,type AgentAllowance} from '../src/lib/autopilot-types';
+import {allowanceRoom,agentSpendingSummary,type AgentAllowance} from '../src/lib/autopilot-types';
 import type {AgentContext} from '../src/lib/agent-service';
 import type {AgentTurn} from '../src/lib/agent-types';
 import {GEMINI_MODEL} from '../src/lib/agent-types';
@@ -31,6 +31,13 @@ test('allowance checks identity, expiry, counterparty scope, true rolling quota 
  const spending={...turn,action:{kind:'protect' as const,amount:'20'}};assert.throws(()=>checkAllowance({...v,history:[{atMs:now-1,amountUnits:'25000000'}]},c,spending,a(22)),/quota/);
  assert.equal(allowanceRoom({...v,history:[{atMs:now-86400000,amountUnits:'20000000'},{atMs:now-1,amountUnits:'20000000'}]},now),20000000n);
  assert.throws(()=>checkAllowance({...v,allowCooldown:false},c,spending,a(22)));
+});
+
+test('displayed agent spending is funded separately and bounded by the live rolling quota and action limit',()=>{
+ const {v}=data(),summary=agentSpendingSummary({...v,history:[{atMs:now-1,amountUnits:'10000000'}]},now);
+ assert.deepEqual(summary,{balanceUnits:'100000000',availableUnits:'30000000',perTxUnits:'25000000'});
+ assert.equal(agentSpendingSummary({...v,balanceUnits:'5000000'},now).availableUnits,'5000000');
+ for(const change of [{active:false},{expiresAtMs:now},{history:[{atMs:now-1,amountUnits:'40000000'}]},{history:Array.from({length:64},()=>({atMs:now-1,amountUnits:'0'}))}])assert.equal(agentSpendingSummary({...v,...change},now).availableUnits,'0');
 });
 test('delegated builders use only the vault, linked memory, policy epoch and native USDC',async()=>{
  const {v,turn}=data(),id=await autopilotRequestId(v.owner,turn.id),tx=buildDelegatedTransaction(v,turn,id).getData();

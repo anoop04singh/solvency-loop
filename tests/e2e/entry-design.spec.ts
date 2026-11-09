@@ -11,6 +11,17 @@ async function open(page:Page,request:APIRequestContext){
 }
 async function view(page:Page,name:string){await page.getByRole('button',{name,exact:true}).click();}
 
+test('Quiet Memory sign-in stays focused and owner recovery is available inside the proof drawer',async({page,request})=>{
+ await open(page,request);await view(page,'Quiet sign-in');
+ await expect(page.getByRole('heading',{name:'Sign in with Quiet Memory',exact:true})).toBeVisible();
+ await expect(page.locator('.autopilot-panel:visible')).toHaveCount(0);await expect(page.getByRole('button',{name:'Revoke agent',exact:true})).toHaveCount(0);
+ await page.screenshot({path:'test-results/quiet-memory-sign-in.png',fullPage:true,animations:'disabled'});
+ await page.getByRole('button',{name:'Open account and proof',exact:true}).click();await page.getByText('Recover agent funds',{exact:true}).click();
+ await expect(page.getByRole('button',{name:'Revoke agent',exact:true})).toBeEnabled();await expect(page.getByRole('button',{name:'Withdraw',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'Close account details',exact:true}).click();await expect(page.locator('.autopilot-panel:visible')).toHaveCount(0);
+ await page.getByRole('button',{name:'Authorize this session',exact:true}).click();expect(await page.evaluate(()=>window.__entryAction)).toBe('quiet-sign-in');
+});
+
 test('real wallet entry and portalled connection modal share the workspace visual identity',async({page})=>{
  const errors:string[]=[],chain:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(/\/api\/(memory|agent|tatum-rpc)/.test(r.url()))chain.push(r.url());});
  await page.goto('/app');await expect(page.getByRole('heading',{name:'Start with your Sui wallet',exact:true})).toBeVisible();await expect(page.locator('.loading-state')).toHaveCount(0);await page.evaluate(()=>document.fonts.ready);

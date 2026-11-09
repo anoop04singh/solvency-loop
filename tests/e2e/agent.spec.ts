@@ -51,13 +51,30 @@ test('composer signals a pending reply and retains the message for retry after a
  expect((await waiting.boundingBox())?.width).toBe(before?.width);
  await expect(composer.locator('.agent-send-spinner')).toHaveCSS('animation-name','none');
  await expect(page.locator('.agent-response-card')).toHaveCount(0);await expect(input).toBeDisabled();
+ const activity=page.getByRole('region',{name:'Agent activity',exact:true});await expect(activity).toBeVisible();await expect(activity).toContainText('Recalling relevant memory');
+ await expect(activity.locator('[data-state=active]')).toContainText('In progress');await expect(activity).not.toContainText('Saving the action audit');
+ await expect(activity.locator('.activity-orbit')).toHaveCSS('animation-name','none');
+ await activity.getByRole('button',{name:'Show all 5 steps',exact:true}).click();await expect(activity.locator('li')).toHaveCount(5);
+ await activity.getByText('Checking your account',{exact:true}).click();await expect(activity).toContainText('Reading your Sui profile, contacts, USDC balance');
+ await page.screenshot({path:'test-results/agent-activity-timeline.png',animations:'disabled'});
  await page.getByRole('button',{name:'Finish response',exact:true}).click();
  await expect(page.locator('#agent-chat-error')).toContainText('Try sending your message again.');
  await expect(composer).toHaveAttribute('aria-busy','false');await expect(page.locator('.agent-response-card')).toHaveCount(0);await expect(input).toHaveValue(/My real request/);
+ await expect(activity).toHaveCount(0);
  await page.getByLabel('Hold agent response').uncheck();await page.getByLabel('Fail agent reply').uncheck();
  await composer.getByRole('button',{name:'Ask agent',exact:true}).click();
  await expect(page.locator('.agent-response-card')).toHaveCount(1);await expect(page.locator('#agent-chat-error')).toHaveCount(0);await expect(input).toHaveValue('');
 });
+test('loading activity stays visible beside the reply dock on a small screen',async({page,request})=>{
+ await page.setViewportSize({width:360,height:680});await page.emulateMedia({reducedMotion:'reduce'});await openAgent(page,request);
+ await page.getByText('Isolated agent fixture controls',{exact:true}).click();await page.getByLabel('Hold agent response').check();
+ await page.getByRole('textbox',{name:'Message SolvencyLoop'}).fill('My current bill');await page.getByRole('button',{name:'Ask agent',exact:true}).click();
+ const activity=page.getByRole('region',{name:'Agent activity',exact:true});await expect(activity.locator('.agent-activity-graphic')).toBeInViewport();
+ await expect(page.locator('.agent-composer').getByRole('button',{name:'Waiting…',exact:true})).toBeInViewport();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);await page.screenshot({path:'test-results/agent-activity-mobile.png',animations:'disabled'});
+ await page.getByRole('button',{name:'Finish response',exact:true}).click();await expect(activity).toHaveCount(0);
+});
+
 test('a clarification and its reply box stay together on a small screen',async({page,request})=>{
  await page.setViewportSize({width:360,height:680});
  await openAgent(page,request);

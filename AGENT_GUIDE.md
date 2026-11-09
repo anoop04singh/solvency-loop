@@ -22,6 +22,8 @@ Create the key in [Google AI Studio](https://aistudio.google.com/apikey) and ena
 
 Enter sends a message; Shift+Enter inserts a line break. A proposed action expires after five minutes and cannot be replayed from restored history. Ask again for fresh validation. **Edit items manually** transfers your actual proposed bill into the existing editor, which recalls fresh learning before review.
 
+While a reply is loading, **Agent activity** shows live request stages. Open a step to inspect the data it uses, or expand the full timeline. The stages reflect account checks, memory recall, receipt verification, bill reads, Gemini interpretation and proposal validation as they run. Audit, memory-write and execution stages appear only when that work is performed. Completed activity steps do not establish payment confirmation; use the reply's actual receipt status. Ordinary chat and status questions retain their existing read-only memory behavior.
+
 **Split Canvas**, **Cooldown Vault** and **Escrow Desk** retain the manual flows. The reflection quick action opens 48-hour check-ins, while **Audit** and the proof drawer expose memory, preferences, contacts and account management. No example contacts, preset amounts or fake conversation are supplied. The reference shader has pause, reduced-motion, data-saver and WebGL fallbacks.
 
 ## Why both services are required

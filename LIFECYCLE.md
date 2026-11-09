@@ -44,7 +44,7 @@ After confirmed settlement or activation, the app requests a signed `settlement`
 
 A payer's signature writes only into the payer's account. The creator can import matching received payments into their own account from Memory & preferences. Event IDs deduplicate the import, and verified records inform later allocations. This closes the learning loop without cross-account writes, a database, seed memories or synthetic repayment history. Enough later fast payments can relax adaptive escrow; a single payment never claims an earned trust score.
 
-Purchase check-ins follow the same owned learning model: actual self-reported purchases, server-enforced 48-hour delay, explicit verdict/intensity and committed habit/cash-flow context. The header shield derives from sufficient actual samples and never moves funds automatically. Vault locking still requires amount review and wallet approval for a full 24-hour cooldown.
+Purchase check-ins follow the same owned learning model: actual self-reported purchases or the creator's own share of a loaded uncancelled native-USDC bill, server-enforced 48-hour delay, explicit verdict/intensity and committed habit/cash-flow context. Created bills appear without an extra purchase-memory write. Bill ratings recheck the current object, creator, time and exact share on Sui. The header shield derives from sufficient actual samples and never moves funds automatically. Vault locking still requires amount review and wallet approval for a full 24-hour cooldown.
 
 ## Documentation and validation
 

@@ -14,11 +14,13 @@ The workspace opens only when profile ownership, the active MemWal account, its 
 
 Once onboarding is ready, choose quiet memory or individual approvals before the first learning refresh. Quiet memory uses one explicit wallet grant for up to one hour; individual mode signs each request. Sign-in recalls your existing memory and verifies payment evidence to calculate a personal spending suggestion. Zero memories is a valid starting point. A canceled or failed request leaves the suggestion unavailable and shows a retry; the app never substitutes example data or repeatedly opens prompts. Wallet changes start a separate session. See [LIFECYCLE.md](./LIFECYCLE.md) for the creator-to-counterparty loop and [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md) for the optional delegated path.
 
+The returning-user Quiet Memory sign-in screen contains only the memory choice. Before sign-in completes, existing allowance revocation and withdrawal are available through the account/proof drawer under **Recover agent funds**. Recovery does not require authorizing a new Quiet Memory session.
+
 ## Your workspace
 
-- The unbordered **Safe to spend today** metric stays above the workspace, with your wallet balance and allocation strip.
+- The unbordered **Safe to spend today** metric stays above the workspace, with your wallet balance and allocation strip. Its color key identifies the reserve, unpaid shares, safe spending room and suggested shield. With active Autopilot, a purple segment adds the separately funded agent allowance. The adjacent agent amount is capped by its funded balance, remaining rolling 24-hour quota, expiry and action limit, with the per-transaction cap shown separately. The wallet's safe-to-spend amount stays separate from this allowance.
 - **Split a Bill:** prepare and inspect the full bill card, or use the guided popup to enter one detail at a time.
-- **Regret check-in:** record a purchase and rate it after 48 hours using choices and a regret intensity scale.
+- **Regret check-in:** rate a recorded purchase or a bill you created after 48 hours using choices and a regret intensity scale. Created bills use your own share.
 - **Settle Shares:** open a shared bill, fund an upfront deposit or pay your own share. The counter reflects your unsettled shares in loaded, uncancelled bills.
 - The **settings drawer** links to **Vaults & protection**, **Memory & preferences**, **Profile & contacts** and account refresh. These tools keep the three main tabs focused.
 
@@ -70,6 +72,10 @@ Choose the USDC amount in the drawer's **Vaults & protection** tool and review t
 ## Check in after 48 hours
 
 In **Regret check-in**, add an actual purchase through category, merchant, USDC amount and purchase-time steps. These purchase details are self-reported, not proof of an on-chain merchant payment. The server records your local purchase hour/timezone and a fresh live balance/checkpoint in habit_regret. A purchase must be within the past year.
+
+Bills you created also appear automatically from loaded Sui history. Each row shows your creator share and category. Their check-in opens 48 hours after bill creation. Cancelled bills are excluded. Listing a bill does not write a purchase memory. On check-in, the server rechecks the bill's native-USDC type, creator, cancellation state, creation time and exact creator share before saving your rating and live cash-flow context. The creation hour uses the timezone supplied at check-in. A split object records the declared expense and its shares; it does not prove a merchant payment.
+
+**Split Canvas** includes **Bills you created**, with each total, your share, outstanding participant shares and current status. Open a bill to manage it in Escrow Desk. **Load earlier bills** in these views retrieves older pages of on-chain history.
 
 At least 48 hours after the purchase, choose the row's **Worth It** or **Regretted** option. Worth It opens its review; Regretted adds a 1–5 intensity slider before review. Both options remain disabled before the check-in is due. Review before signing. The server independently enforces the delay and owned purchase lookup, then commits the rating and current balance/reserve/checkpoint to habit_regret and cashflow_elasticity. The latest rating per purchase counts once. If the second commit fails, the app reports the partial result; retrying does not count the purchase twice.
 

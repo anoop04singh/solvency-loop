@@ -65,7 +65,7 @@ export async function fetchFullUserStateViaTatum(walletAddress: string): Promise
   if (!profile) return { ...base, profileId: '', handle: '', memwalAccountId: '', safeFloorUsdc: 0, contacts: [], isRegisteredOnChain: false };
   return { ...base, ...profile, isRegisteredOnChain: true };
 }
-function decodeSplits(objects: SuiObjectResponse[], wallet: string): OnChainGroupSplit[] {
+export function decodeSplits(objects: SuiObjectResponse[], wallet: string): OnChainGroupSplit[] {
   const result: OnChainGroupSplit[] = [];
     for (const obj of objects) {
       if (obj.error) throw new Error('Split read failed: ' + obj.error.code);
