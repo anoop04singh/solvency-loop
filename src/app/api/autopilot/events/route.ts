@@ -1,7 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {dispatchConfirmedBill,verifyDeliverySignature} from '@/lib/autopilot-dispatch';
 export const runtime='nodejs';
-export const maxDuration=600;
+export const maxDuration=300;
 export async function POST(req:NextRequest){
  try{
   const raw=await req.text();if(new TextEncoder().encode(raw).length>2000)return NextResponse.json({error:'Event delivery too large.'},{status:413});

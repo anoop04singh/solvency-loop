@@ -3,7 +3,7 @@ import { errorMessage } from '@/lib/config';
 import { proxyTatumRpc } from '@/lib/rpc-proxy';
 import { requestOrigin } from '@/lib/http-origin';
 export const runtime = 'nodejs';
-export const maxDuration=600;
+export const maxDuration=300;
 export async function POST(req: NextRequest) {
   try {
     if (req.headers.get('origin') && req.headers.get('origin') !== requestOrigin(req)) return NextResponse.json({ error: 'Origin not allowed.' }, { status: 403 });
