@@ -233,3 +233,29 @@ textarea.field { height:auto;min-height:128px;line-height:1.7; }
  .form-actions { gap:10px; }
 }
 @media(prefers-reduced-motion:reduce) { .loading-track > span { transform:none;left:30%; }.loading-skeleton *,.loading-track > span { animation:none!important; } }
+/* Autopilot dialogs share the current workspace identity and field anatomy. */
+.flow-dialog.autopilot-dialog .flow-content>fieldset{display:flex;flex-direction:column;gap:var(--space-2xl);min-width:0}
+.flow-dialog.autopilot-dialog .flow-field{min-width:0;color:var(--product-muted);font-size:var(--font-size-sm)}
+.flow-dialog.autopilot-dialog .flow-field>.field{display:block;min-width:0;box-sizing:border-box}
+.flow-dialog.autopilot-dialog .field[aria-invalid=true]{border-color:var(--color-border-error-subtle)}
+.flow-dialog.autopilot-dialog .flow-stages{list-style:none;margin:0}
+.flow-dialog.autopilot-dialog .flow-stages li{min-width:0}
+.flow-dialog.autopilot-dialog .flow-top,.flow-dialog.autopilot-dialog .flow-footer,.flow-dialog.autopilot-dialog .flow-stages{flex-shrink:0}
+.flow-dialog.autopilot-dialog .choice-card{align-items:flex-start;margin:0}
+.flow-dialog.autopilot-dialog .choice-card input{margin-top:var(--space-xxs)}
+.flow-dialog.autopilot-dialog .choice-card>span{min-width:0;overflow-wrap:anywhere}
+.flow-dialog.autopilot-dialog .choice-cards>legend{margin-bottom:var(--space-lg);color:var(--product-muted);font-size:var(--font-size-xs)}
+.flow-dialog.autopilot-dialog .allowance-consent{align-items:flex-start;gap:var(--space-lg);margin:0;padding:var(--space-xl);background:var(--product-soft,#f6f3f2);border:1px solid var(--product-line,#e5e2e1);border-radius:var(--radius-md);font-size:var(--font-size-xs);line-height:1.6}
+.flow-dialog.autopilot-dialog .allowance-consent input{flex-shrink:0;margin-top:var(--space-xs);width:var(--space-xl);height:var(--space-xl)}
+.flow-dialog.autopilot-dialog .allowance-availability{display:flex;flex-direction:column;gap:var(--space-md);font-size:var(--font-size-xs)}
+.flow-dialog.autopilot-dialog .allowance-availability>div{display:flex;justify-content:space-between;gap:var(--space-lg)}
+.flow-dialog.autopilot-dialog .allowance-availability dt{color:var(--product-muted)}
+.flow-dialog.autopilot-dialog .allowance-availability dd{font-weight:600;text-align:right}
+.flow-dialog.autopilot-dialog .flow-error{overflow-wrap:anywhere}
+.flow-dialog.autopilot-dialog .flow-footer{align-items:stretch}
+.flow-dialog.autopilot-dialog .flow-footer>.primary-commit{min-width:0}
+@media(max-width:520px){
+ .flow-dialog.autopilot-review .flow-footer{flex-direction:column-reverse;gap:var(--space-md)}
+ .flow-dialog.autopilot-review .flow-footer>.primary-commit{flex:none;width:100%;white-space:nowrap}
+ .flow-dialog.autopilot-review .flow-footer>.button-secondary{width:100%}
+}

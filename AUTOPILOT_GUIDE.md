@@ -74,12 +74,14 @@ AUTOPILOT_WEBHOOK_SECRET=
 ```
 
 - `SUI_AGENT_PRIVATE_KEY`: a **dedicated executor's** Sui Ed25519 `suiprivkey...`, generated and held by the operator. Never reuse a customer's wallet or the MemWal delegate key. Supply enough SUI for the executor's actual gas workload. Do not fund this key with customers' USDC; budgets are in their shared allowance objects.
-- `NEXT_PUBLIC_AGENT_EXECUTOR_ADDRESS`: the Sui address derived from that exact executor key. It is not the raw MemWal delegate public key. Readiness rejects a mismatch.
+- `NEXT_PUBLIC_AGENT_EXECUTOR_ADDRESS`: the Sui address derived from that exact executor key. It must differ from each user's wallet. Setup rejects a wallet assigned as its own executor before requesting wallet approval. Readiness rejects a key/address mismatch.
 - `NEXT_PUBLIC_AUTOPILOT_PACKAGE_ID`: the new upgraded package call target.
 - `NEXT_PUBLIC_AUTOPILOT_TYPE_ORIGIN`: prefix of the newly created directory's `::autopilot::AgentDirectory` type. Usually equals the first package introducing this module; keep it stable across future upgrades.
 - `NEXT_PUBLIC_AGENT_DIRECTORY_ID`: the one shared directory created above.
 - `AUTOPILOT_ENABLED`: operator switch. Keep `false` while configuring and validating. `true` makes the funded executor available and enables event handling. Rebuild/restart after public configuration changes. Switching this off stops this server's work; use on-chain owner revocation to invalidate authority itself.
 - `AUTOPILOT_WEBHOOK_SECRET`: optional random secret of at least 32 characters for authenticated external event delivery. No external subscription is created by this update.
+
+If allowance creation reports **Move abort 202 at instruction 68**, the creation assertion rejected an existing directory entry, an invalid executor, an empty deposit or an insufficient remaining reserve. An executor equal to the owner is invalid. Use a dedicated operator wallet, set its matching private key and derived public address in the two executor variables, and rebuild/restart the app. An existing allowance must be managed through **Change policy** or **Top up**. These configuration and UI fixes require no contract redeployment.
 
 After filling the IDs and key, run a **read-only** preflight while the switch is still false:
 

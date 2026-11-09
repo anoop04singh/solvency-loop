@@ -6,7 +6,7 @@ import { usePresentationMotion } from '@/lib/use-presentation-motion';
 import {LoadingState} from './LoadingState';
 import {useModalScrollLock} from '@/lib/use-modal-scroll-lock';
 
-interface Props { open:boolean; title:string; question:string; stepKey:string; children:ReactNode; onClose:()=>void; onNext:()=>void; onBack?:()=>void; nextLabel?:string; canNext?:boolean; busy?:boolean; error?:string; hint?:string; stages?:string[]; stage?:string; }
+interface Props { open:boolean; title:string; question:string; stepKey:string; children:ReactNode; onClose:()=>void; onNext:()=>void; onBack?:()=>void; nextLabel?:string; canNext?:boolean; busy?:boolean; error?:string; hint?:string; stages?:string[]; stage?:string; className?:string; }
 export function StepDialog(p:Props) {
   const dialog=useRef<HTMLDialogElement>(null),body=useRef<HTMLDivElement>(null),id=useId(),moving=usePresentationMotion();
   useModalScrollLock(p.open);
@@ -21,7 +21,7 @@ export function StepDialog(p:Props) {
     const timer=window.setTimeout(()=>body.current?.querySelector<HTMLElement>('[data-autofocus], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled)')?.focus({preventScroll:true}),moving?190:0);
     return()=>window.clearTimeout(timer);
   },[p.open,p.stepKey,moving]);
-  return <dialog ref={dialog} className="flow-dialog" aria-labelledby={id+'-question'} aria-describedby={p.hint?id+'-hint':undefined} onCancel={event=>{event.preventDefault();if(!p.busy)p.onClose();}} onClick={event=>{if(event.target===event.currentTarget&&!p.busy)p.onClose();}} onKeyDown={event=>{
+  return <dialog ref={dialog} className={['flow-dialog',p.className].filter(Boolean).join(' ')} aria-labelledby={id+'-question'} aria-describedby={p.hint?id+'-hint':undefined} onCancel={event=>{event.preventDefault();if(!p.busy)p.onClose();}} onClick={event=>{if(event.target===event.currentTarget&&!p.busy)p.onClose();}} onKeyDown={event=>{
     if(event.key!=='Tab')return;
     const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])')).filter(element=>element.getClientRects().length>0);
     const first=controls[0],last=controls[controls.length-1];

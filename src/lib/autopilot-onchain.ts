@@ -8,6 +8,8 @@ import {fetchWalletMemWalAccount} from './memwal-account';
 import {onboardingStatus} from './onboarding';
 import {positiveUsdc,usdcToUnits} from './money';
 import type {AgentAllowance,AutopilotState,AllowancePolicy,PublicSocialPreference,GroupConvention} from './autopilot-types';
+import {executorSetupError,validateAllowancePolicy} from './autopilot-policy';
+export {validateAllowancePolicy} from './autopilot-policy';
 type Fields=Record<string,unknown>;
 export function moveFields(v:unknown):Fields {if(!v||typeof v!=='object'||Array.isArray(v))throw Error('Malformed autopilot object.');const r=v as Fields;return r.fields?moveFields(r.fields):r;}
 function uid(v:unknown):string {return typeof v==='string'?requireAddress(v):uid(moveFields(v).id);}
@@ -75,13 +77,13 @@ async function ownerAccess(wallet:string,recovery=false){
  const state=onboardingStatus(profile,memory);if(!(recovery?state.canRecover:state.ready))throw Error('Owned linked MemWal onboarding is required.');
  const config=autopilotConfig();if(!config)throw Error('Autopilot is not configured.');return {profile,memory:memory!,config};
 }
-export function validateAllowancePolicy(p:AllowancePolicy,contacts:string[],wallet:string,deposit=true){
- if(deposit)positiveUsdc(p.budget);const per=positiveUsdc(p.perTx),daily=positiveUsdc(p.daily);if(daily<per||!Number.isInteger(p.days)||p.days<1||p.days>30||p.payees.length>64||new Set(p.payees).size!==p.payees.length||p.payees.some(a=>requireAddress(a)===wallet||!contacts.includes(a)))throw Error('Choose valid limits, expiry and saved counterparties.');
- if((p.allowCreate||p.allowIncoming)&&!p.payees.length)throw Error('Select counterparties for creation or incoming payments.');
- if(!p.allowCooldown&&!p.allowCreate&&!p.payees.length)throw Error('Choose at least one agent permission.');
-}
 export async function buildAgentAllowanceTx(wallet:string,p:AllowancePolicy,existing?:AgentAllowance|null){
+ wallet=requireAddress(wallet);const deployment=autopilotConfig();if(!deployment)throw Error('Autopilot is not configured.');
+ const executorError=executorSetupError(wallet,deployment.executor);if(executorError)throw Error(executorError);
  const {profile,memory,config}=await ownerAccess(wallet);validateAllowancePolicy(p,profile.contacts.map(c=>c.walletAddress),wallet,!existing);
+ const current=await fetchAgentAllowance(wallet);
+ if(!existing&&current)throw Error('An agent allowance already exists for this wallet. Refresh your account and choose Change policy or Top up.');
+ if(existing&&(!current||current.id!==existing.id||existing.owner!==wallet))throw Error('The agent allowance changed. Refresh your account before reviewing its policy.');
  const tx=new Transaction();tx.setSender(wallet);const delegate=accountDelegateAddress();
  const chainClock=await tatumSuiClient.getObject({id:'0x6',options:{showContent:true}});if(chainClock.data?.content?.dataType!=='moveObject'||normalizeStructTag(chainClock.data.content.type)!==normalizeStructTag('0x2::clock::Clock'))throw Error('The Mainnet clock could not be read.');const expires=BigInt(uint(moveFields(chainClock.data.content.fields).timestamp_ms))+BigInt(p.days)*86400000n;
  const policyArgs=[tx.pure.address(config.executor),tx.pure.address(delegate),tx.pure.u64(positiveUsdc(p.perTx)),tx.pure.u64(positiveUsdc(p.daily)),tx.pure.u64(expires),tx.pure.bool(p.allowCreate),tx.pure.bool(p.allowIncoming),tx.pure.bool(p.allowCooldown),tx.pure.vector('address',p.payees),tx.object('0x6')];
