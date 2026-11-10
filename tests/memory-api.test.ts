@@ -2,6 +2,54 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {requestMemory,AutopilotUncertainError} from '../src/lib/memory-api';
 import {AgentReplyError,GEMINI_MODEL} from '../src/lib/agent-types';
+import {agentProgressResponse} from '../src/lib/agent-progress-stream';
+
+test('sign-in negotiates streaming and rejects a heartbeat-only response instead of accepting empty learning',async()=>{
+ const originalFetch=globalThis.fetch,descriptor=Object.getOwnPropertyDescriptor(globalThis,'window'),wallet='0x'+'1'.repeat(64);
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{origin:'https://workspace.example'}}});
+ let interrupted=false;
+ globalThis.fetch=async(_input,init)=>{
+  assert.equal(new Headers(init?.headers).get('accept'),'application/x-ndjson');
+  const envelope=JSON.parse(String(init?.body));
+  assert.equal(envelope.origin,'https://workspace.example');
+  if(interrupted)return new Response('{"type":"heartbeat"}\n',{headers:{'Content-Type':'application/x-ndjson'}});
+  return agentProgressResponse(async()=>envelope.payload.action==='recall_all'
+   ?{memories:[],verifiedSettlements:[],rejectedEvidenceCount:0,tatumAnchor:{checkpoint:'123'}}
+   :{learnedMemories:[]},()=>({error:'failed',noFinancialExecution:true}));
+ };
+ try{
+  const sign=async()=>({signature:'test-only'});
+  assert.deepEqual((await requestMemory({action:'recall_all',walletAddress:wallet},sign)).memories,[]);
+  assert.deepEqual((await requestMemory({action:'recall_learning',walletAddress:wallet},sign)).learnedMemories,[]);
+  interrupted=true;
+  await assert.rejects(requestMemory({action:'recall_all',walletAddress:wallet},sign),/interrupted/);
+ }finally{globalThis.fetch=originalFetch;if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else Reflect.deleteProperty(globalThis,'window');}
+});
+
+test('host timeout JSON and HTML produce useful errors without exposing platform stacks or losing execution uncertainty',async()=>{
+ const originalFetch=globalThis.fetch,descriptor=Object.getOwnPropertyDescriptor(globalThis,'window'),wallet='0x'+'1'.repeat(64);
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{origin:'https://workspace.example'}}});
+ try{
+  const sign=async()=>({signature:'test-only'});
+  for(const response of [
+   new Response('<HTML><TITLE>Inactivity Timeout</TITLE><H1>Inactivity Timeout</H1></HTML>',{status:504,headers:{'x-nf-request-id':'netlify-public-reference'}}),
+   Response.json({errorType:'Sandbox.Timedout',errorMessage:'Internal runtime details'},{status:502,headers:{'x-nf-request-id':'netlify-public-reference'}}),
+  ]){
+   globalThis.fetch=async()=>response.clone();
+   await assert.rejects(requestMemory({action:'recall_all',walletAddress:wallet},sign),error=>{
+    assert(error instanceof Error);assert.match(error.message,/timed out.*HTTP (504|502)/);
+    assert.match(error.message,/netlify-public-reference/);assert.doesNotMatch(error.message,/<HTML>|Internal runtime details/);return true;
+   });
+  }
+  globalThis.fetch=async()=>Response.json({message:'A private platform stack must not be exposed'},{status:500});
+  await assert.rejects(requestMemory({action:'recall_all',walletAddress:wallet},sign),error=>{
+   assert(error instanceof Error);assert.match(error.message,/HTTP 500/);assert.doesNotMatch(error.message,/private platform stack/);return true;
+  });
+  await assert.rejects(requestMemory({action:'agent_chat',walletAddress:wallet,text:'Pay my actual share',threadId:'test-thread-00000001',timeZone:'UTC',autoExecute:true,allowanceEpoch:'0'},sign),AutopilotUncertainError);
+  globalThis.fetch=async()=>new Response('<html>A successful response cannot substitute for memory</html>');
+  await assert.rejects(requestMemory({action:'recall_all',walletAddress:wallet},sign),/unreadable.*no empty fallback/);
+ }finally{globalThis.fetch=originalFetch;if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else Reflect.deleteProperty(globalThis,'window');}
+});
 test('signed learning responses cannot silently become empty history, and Smart Fill uses its authenticated endpoint',async()=>{
  const fetch=globalThis.fetch,descriptor=Object.getOwnPropertyDescriptor(globalThis,'window'),wallet='0x'+'1'.repeat(64);let response:unknown={},path='',message='';
  Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{origin:'http://127.0.0.1:3000'}}});

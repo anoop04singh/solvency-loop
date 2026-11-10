@@ -8,8 +8,9 @@ import {memorySigningMessage} from '../src/lib/memory-protocol';
 import {readAgentProgressResponse} from '../src/lib/agent-progress-stream';
 import {AgentReplyError} from '../src/lib/agent-types';
 const origin='http://127.0.0.1:3000';
-async function signedRequest(valid=true){
- const key=new Ed25519Keypair(),envelope={payload:{action:'agent_chat' as const,walletAddress:key.toSuiAddress(),text:'What are my pending splits?',threadId:'test-thread-00000001',timeZone:'UTC'},issuedAt:Date.now(),nonce:crypto.randomUUID(),origin};
+async function signedRequest(valid=true,action:'agent_chat'|'recall_all'|'recall_learning'='agent_chat'){
+ const key=new Ed25519Keypair(),payload=action==='agent_chat'?{action,walletAddress:key.toSuiAddress(),text:'What are my pending splits?',threadId:'test-thread-00000001',timeZone:'UTC'}:{action,walletAddress:key.toSuiAddress()};
+ const envelope={payload,issuedAt:Date.now(),nonce:crypto.randomUUID(),origin};
  const signature=(await key.signPersonalMessage(new TextEncoder().encode(memorySigningMessage(envelope)))).signature;
  return new NextRequest(origin+'/api/agent',{method:'POST',headers:{origin,host:'127.0.0.1:3000',Accept:'application/x-ndjson'},body:JSON.stringify({...envelope,signature:valid?signature:'invalid'})});
 }
@@ -18,6 +19,24 @@ test('the real route authenticates before streaming and cannot execute an invali
  const deps={verify:verifyMemoryEnvelope,execute:async()=>{calls++;return {status:'READY'};},after:()=>{throw Error('No background write expected');}};
  const rejected=await handleMemoryRequest(await signedRequest(false),'agent_chat',deps);assert.equal(rejected.status,401);assert.equal(calls,0);
  const accepted=await handleMemoryRequest(await signedRequest(),'agent_chat',deps);assert.match(accepted.headers.get('content-type')!,/x-ndjson/);assert.match(accepted.headers.get('cache-control')!,/no-store/);assert.equal((await readAgentProgressResponse(accepted)).data.status,'READY');assert.equal(calls,1);
+});
+
+test('signed sign-in recalls flush before slow work and only finish with their complete memory result',async()=>{
+ for(const action of ['recall_all','recall_learning'] as const){
+  let release!:()=>void,calls=0;
+  const gate=new Promise<void>(resolve=>{release=resolve;});
+  const expected=action==='recall_all'?{memories:[],verifiedSettlements:[],rejectedEvidenceCount:0,tatumAnchor:{checkpoint:'123'}}:{learnedMemories:[]};
+  const deps={verify:verifyMemoryEnvelope,after:()=>{throw Error('Sign-in must not schedule writes');},execute:async(payload:{action:string})=>{calls++;assert.equal(payload.action,action);await gate;return expected;}};
+  const rejected=await handleMemoryRequest(await signedRequest(false,action),undefined,deps);
+  assert.equal(rejected.status,401);assert.equal(calls,0);
+  const response=await handleMemoryRequest(await signedRequest(true,action),undefined,deps);
+  assert.match(response.headers.get('content-type')!,/x-ndjson/);
+  const reader=response.body!.getReader();
+  assert.equal(JSON.parse(new TextDecoder().decode((await reader.read()).value)).type,'heartbeat');
+  reader.releaseLock();release();
+  assert.deepEqual((await readAgentProgressResponse(response)).data,expected);
+  assert.equal(calls,1);
+ }
 });
 test('streamed route errors redact secrets and preserve uncertainty once execution may have started',async()=>{
  const previous=process.env.GEMINI_API_KEY;process.env.GEMINI_API_KEY='fixture-secret-must-never-appear';

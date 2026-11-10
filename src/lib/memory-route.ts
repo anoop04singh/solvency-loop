@@ -38,7 +38,8 @@ export async function handleMemoryRequest(req: NextRequest,requiredAction?:Memor
       }),
       ...(grant&&envelope.payload.autoMemory?{background:{expiresAt:grant.expiresAt,schedule:(task:()=>Promise<void>)=>{tasks.push(task);}}}:{}),
     });
-    if(envelope.payload.action==='agent_chat'&&req.headers.get('accept')?.includes('application/x-ndjson'))return agentProgressResponse(run,failure);
+    const streamable=['agent_chat','recall_all','recall_learning'].includes(envelope.payload.action);
+    if(streamable&&req.headers.get('accept')?.includes('application/x-ndjson'))return agentProgressResponse(run,failure);
     return NextResponse.json(await run(),{headers:{'Cache-Control':'no-store'}});
   } catch (error) {
     const data=failure(error);

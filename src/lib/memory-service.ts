@@ -59,7 +59,7 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     if(work.deliverConfirmed){work.deliverConfirmed(digest);return;}
     const {dispatchConfirmedBill}=await import('./autopilot-dispatch');await dispatchConfirmedBill(digest);
   };
-  const progress=p.action==='agent_chat'?work.progress:undefined;
+  const progress=work.progress;
   const tracked=async<T>(stage:AgentProgressStage,task:()=>Promise<T>,facts?:(value:T)=>{count?:number;checkpoint?:string})=>{
     notifyAgentProgress(progress,stage,'active');const value=await task();notifyAgentProgress(progress,stage,'complete',facts?.(value));return value;
   };

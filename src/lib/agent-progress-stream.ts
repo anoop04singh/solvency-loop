@@ -3,15 +3,21 @@ import type {MemoryResponse} from './memory-api';
 export interface AgentStreamError {error:string;code?:string;noFinancialExecution:boolean;}
 export function agentProgressResponse(run:(progress:AgentProgressObserver)=>Promise<MemoryResponse>,failure:(error:unknown)=>AgentStreamError){
  let closed=false;
+ let heartbeat:ReturnType<typeof setInterval>|undefined;
+ const stopHeartbeat=()=>{if(heartbeat!==undefined){clearInterval(heartbeat);heartbeat=undefined;}};
  const encoder=new TextEncoder();
  const stream=new ReadableStream<Uint8Array>({
   async start(controller){
-   const emit=(value:unknown)=>{if(closed)return;try{controller.enqueue(encoder.encode(JSON.stringify(value)+'\n'));}catch{closed=true;}};
+   const emit=(value:unknown)=>{if(closed)return;try{controller.enqueue(encoder.encode(JSON.stringify(value)+'\n'));}catch{closed=true;stopHeartbeat();}};
+   // Flush headers immediately and keep idle proxies informed during relayer
+   // and chain reads. This does not extend a host's total execution limit.
+   emit({type:'heartbeat'});
+   heartbeat=setInterval(()=>emit({type:'heartbeat'}),5_000);
    try{const data=await run(progress=>emit({type:'progress',progress}));emit({type:'result',data});}
    catch(error){emit({type:'error',...failure(error)});}
-   finally{if(!closed){closed=true;controller.close();}}
+   finally{stopHeartbeat();if(!closed){closed=true;controller.close();}}
   },
-  cancel(){closed=true;},
+  cancel(){closed=true;stopHeartbeat();},
  });
  return new Response(stream,{headers:{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store, no-transform','X-Accel-Buffering':'no'}});
 }
@@ -22,6 +28,7 @@ export async function readAgentProgressResponse(response:Response,observer?:Agen
   if(!line.trim())return;
   if(result)throw Error('Unexpected data after the agent result.');
   const frame=JSON.parse(line);
+  if(frame.type==='heartbeat')return;
   if(frame.type==='progress'&&isAgentProgress(frame.progress)){
    if(++events>100)throw Error('Too many agent status updates.');
    try{observer?.(frame.progress);}catch{}

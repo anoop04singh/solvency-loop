@@ -5,6 +5,24 @@ import {mergeAgentProgress,type AgentProgress} from '../src/lib/agent-progress';
 import {requestMemory,AutopilotUncertainError} from '../src/lib/memory-api';
 import {AgentReplyError,GEMINI_MODEL} from '../src/lib/agent-types';
 
+test('idle work sends keepalives without claiming progress or completing before its result',async t=>{
+ t.mock.timers.enable({apis:['setInterval']});
+ let release!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve;});
+ const response=agentProgressResponse(async()=>{await gate;return {status:'READY'};},()=>({error:'failed',noFinancialExecution:true}));
+ const reader=response.body!.getReader(),decoder=new TextDecoder();
+ assert.deepEqual(JSON.parse(decoder.decode((await reader.read()).value)),{type:'heartbeat'});
+ t.mock.timers.tick(5_000);
+ assert.deepEqual(JSON.parse(decoder.decode((await reader.read()).value)),{type:'heartbeat'});
+ release();
+ assert.equal(JSON.parse(decoder.decode((await reader.read()).value)).type,'result');
+ assert.equal((await reader.read()).done,true);
+ t.mock.timers.tick(10_000);
+ assert.equal((await reader.read()).done,true);
+ reader.releaseLock();
+ await assert.rejects(readAgentProgressResponse(new Response('{"type":"heartbeat"}\n')),/interrupted/);
+});
+
 test('progress arrives during actual work, tolerates chunk boundaries and requires a final result',async()=>{
  let release!:()=>void,first!:()=>void;
  const gate=new Promise<void>(resolve=>{release=resolve;}),started=new Promise<void>(resolve=>{first=resolve;}),events:AgentProgress[]=[];
