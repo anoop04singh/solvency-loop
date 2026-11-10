@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {executeMemoryRequest,type MemoryDependencies} from '../src/lib/memory-service';
-import {verifyRecalledSettlements} from '../src/lib/memory-evidence';
+import {settlementReadScope,verifyRecalledSettlements} from '../src/lib/memory-evidence';
 import {validatePayload,memorySigningMessage,type MemoryPayload,type RecalledMemory} from '../src/lib/memory-protocol';
 import {CHECKIN_DELAY_MS,DAY_MS,type PurchaseMemory} from '../src/lib/financial-insights';
 import {SUI_MAINNET_USDC_TYPE} from '../src/lib/config';
@@ -23,6 +23,39 @@ function setup(){
  };
  return {deps,writes,client,setRecalled:(values:RecalledMemory[])=>{recalled=values;}};
 }
+
+test('sign-in phases retain owned access, cannot write, and bind their exact phase in the signed payload',async()=>{
+ const {deps,writes}=setup();let access=0;
+ const original=deps.access;deps.access=async(...args)=>{access++;return original(...args);};
+ for(const readPhase of ['personal','social','evidence'] as const){
+  const payload:MemoryPayload={action:'recall_all',walletAddress:owner,readPhase};
+  validatePayload(payload);
+  const result=await executeMemoryRequest(payload,nonce,deps);
+  assert.equal(result.readPhase,readPhase);assert.equal(result.memoryAccountId,account);assert.equal(result.tatumAnchor?.checkpoint,'123456');
+ }
+ assert.equal(access,3);assert.equal(writes.length,0);
+ for(const invalid of [{action:'remember',readPhase:'personal',text:'test'},{action:'recall_all',readPhase:'personal',autoMemory:true},{action:'recall_all',readPhase:'evidence',evidenceOffset:1},{action:'recall_all',readPhase:'evidence',evidenceOffset:5}]){
+  assert.throws(()=>validatePayload({walletAddress:owner,...invalid}));
+ }
+ const envelope={payload:{action:'recall_all' as const,walletAddress:owner,readPhase:'personal' as const},issuedAt:now,nonce,origin:'https://workspace.example'};
+ assert.notEqual(memorySigningMessage(envelope),memorySigningMessage({...envelope,payload:{...envelope.payload,readPhase:'social'}}));
+});
+
+test('evidence pages keep the existing 20-candidate cap and reject changed snapshots',async()=>{
+ const records=Array.from({length:25},(_,i)=>mem('SOLVENCY_SETTLEMENT_V1',{digest:'3'.repeat(43)+'123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'[i],eventSeq:'0',recipient:owner,subject:friend,splitId:split,amountUnits:'50000000',settledAtMs:i+1},'social_split_trust'));
+ let reads=0;
+ const deps={transaction:(async()=>{reads++;return {effects:{status:{status:'failure'}}};}) as unknown as MemoryDependencies['transaction'],object:(async()=>{throw Error('Failed transactions must not read a source object');}) as MemoryDependencies['object']};
+ let snapshot:string|undefined;
+ for(const offset of [0,5,10,15]){
+  const result=await verifyRecalledSettlements(records,owner,deps,{offset,limit:5,snapshot});
+  snapshot=result.evidenceSnapshot;
+  assert.equal(result.rejectedEvidenceCount,5);assert.equal(result.evidenceLimitReached,true);
+  assert.equal(result.nextEvidenceOffset,offset===15?null:offset+5);
+ }
+ assert.equal(reads,20);
+ await assert.rejects(verifyRecalledSettlements(records.slice(0,-1),owner,deps,{offset:5,limit:5,snapshot}),/history changed/);
+ assert.equal(reads,20);
+});
 test('purchase input validates precise amounts, timezone, rating and signs all new preference fields',()=>{
  const input:MemoryPayload={action:'record_purchase',walletAddress:owner,merchant:'Place',merchantCategory:'shopping',amountUsdc:'0.000001',purchasedAtMs:now,timeZone:'UTC'};
  assert.deepEqual(validatePayload(input),input);
@@ -100,6 +133,22 @@ test('recalled settlements are deduped and independently verified against exact 
  const {deps}=setup();const result=await verifyRecalledSettlements([observation(),observation()],owner,deps);
  assert.equal(result.verifiedSettlements.length,1);assert.equal(result.rejectedEvidenceCount,0);
  assert.equal(result.verifiedSettlements[0].lagMs,14*DAY_MS);assert.equal(result.verifiedSettlements[0].checkpoint,'123');
+});
+
+test('one social request reuses exact evidence reads without caching authorization or hiding provider failures',async()=>{
+ const {deps}=setup();let objects=0,transactions=0;
+ const object=deps.object,transaction=deps.transaction;
+ deps.object=async p=>{objects++;return object(p);};deps.transaction=async p=>{transactions++;return transaction(p);};
+ const scope=settlementReadScope(deps);
+ // The social event scan already reads the bill before verifying its receipt.
+ await scope.object({id:split,options:{showContent:true}});
+ assert.equal((await verifyRecalledSettlements([observation()],owner,scope)).verifiedSettlements.length,1);
+ assert.equal((await verifyRecalledSettlements([observation()],owner,scope)).verifiedSettlements.length,1);
+ assert.equal(objects,1);assert.equal(transactions,1);
+ await verifyRecalledSettlements([observation()],owner,settlementReadScope(deps));
+ assert.equal(objects,2);assert.equal(transactions,2);
+ const unavailable=settlementReadScope({...deps,transaction:async()=>{throw Error('Tatum unavailable');}});
+ await assert.rejects(verifyRecalledSettlements([observation()],owner,unavailable),/Tatum unavailable/);
 });
 test('failed, wrong-token or mismatched settlement evidence never affects a rule',async()=>{
  for(const change of ['failure','token','amount','package','lag','foreign']){

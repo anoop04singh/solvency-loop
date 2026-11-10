@@ -90,26 +90,47 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     const items=changes.map(choice=>({text:LEARNED_MARKER+' '+JSON.stringify({...choice,owner:wallet,updatedAtMs,revision:nonce}),namespace:learned,category:'social_split_trust' as const}));
     return commitMemoryBatch({rememberBulkAndWait:(items,options)=>client.rememberBulkAndWait!(items,options)},items,'learned:'+nonce+':'+createHash('sha256').update(JSON.stringify(items)).digest('hex'));
   };
-  const recallAll = async (committed: RecalledMemory[] = []) => {
-    notifyAgentProgress(progress,'memory','active');
+  const queries={social_split_trust:'SOLVENCY_RULE_V1 SOLVENCY_SETTLEMENT_V1 SOLVENCY_AGENT_V1 conversations alcohol exclusions payment preferences settlement history',habit_regret:'SOLVENCY_PURCHASE_V1 SOLVENCY_REGRET_V1 purchase check-in regret reflections',cashflow_elasticity:'SOLVENCY_CASHFLOW_V1 balance liquidity cashflow local time regret'};
+  const recallPersonal = async (committed: RecalledMemory[] = []) => {
     const socialClient=scopedClient('social_split_trust');
-    const [social,learning,results]=await Promise.all([
-      deps.social?.(state,socialClient,p.action==='refresh_learning'),
+    const [learning,results]=await Promise.all([
       recallLearning(socialClient),
       Promise.all(CATEGORIES.map(async cat => {
-        const queries={social_split_trust:'SOLVENCY_RULE_V1 SOLVENCY_SETTLEMENT_V1 SOLVENCY_AGENT_V1 conversations alcohol exclusions payment preferences settlement history',habit_regret:'SOLVENCY_PURCHASE_V1 SOLVENCY_REGRET_V1 purchase check-in regret reflections',cashflow_elasticity:'SOLVENCY_CASHFLOW_V1 balance liquidity cashflow local time regret'};
         const client=cat==='social_split_trust'?socialClient:scopedClient(cat);
         const recalled = await client.recall({ query: p.query || queries[cat], topK: 100 });
         if (recalled.dropped_count) throw new Error('Some Walrus memories could not be decrypted. Restore the namespace before relying on its rules.');
         return recalled.results.map(m => ({ ...m, namespace: getWalletNamespace(wallet, cat), category: cat }));
       })),
     ]);
-    const memories=[...new Map([...results.flat(),...learning,...committed,...social?.memories||[]].map(m=>[m.namespace+':'+m.blob_id,m])).values()];
+    return [...new Map([...results.flat(),...learning,...committed].map(m=>[m.namespace+':'+m.blob_id,m])).values()];
+  };
+  const recallAll = async (committed: RecalledMemory[] = []) => {
+    notifyAgentProgress(progress,'memory','active');
+    const [personal,social]=await Promise.all([recallPersonal(committed),deps.social?.(state,scopedClient('social_split_trust'),p.action==='refresh_learning')]);
+    const memories=[...new Map([...personal,...social?.memories||[]].map(m=>[m.namespace+':'+m.blob_id,m])).values()];
     notifyAgentProgress(progress,'memory','complete',{count:memories.length});
     const verified=await tracked('evidence',()=>verifyRecalledSettlements(memories,wallet,deps),v=>({count:v.verifiedSettlements.length}));
     return { memories,...verified,verifiedSettlements:[...verified.verifiedSettlements,...social?.networkSettlements||[]],publicPreferences:social?.publicPreferences||[],groups:social?.groups||[],tatumAnchor: anchor };
   };
-  if (p.action === 'recall_all') return recallAll();
+  if (p.action === 'recall_all') {
+    const metadata={readPhase:p.readPhase,memoryAccountId:account.accountId,tatumAnchor:anchor};
+    if(p.readPhase==='personal'){
+      const memories=await tracked('memory',()=>recallPersonal(),value=>({count:value.length}));
+      return {...metadata,memories};
+    }
+    if(p.readPhase==='social'){
+      const social=await tracked('memory',async()=>deps.social?.(state,scopedClient('social_split_trust'),false));
+      return {...metadata,memories:social?.memories||[],verifiedSettlements:social?.networkSettlements||[],publicPreferences:social?.publicPreferences||[],groups:social?.groups||[]};
+    }
+    if(p.readPhase==='evidence'){
+      const recalled=await scopedClient('social_split_trust').recall({query:p.query||queries.social_split_trust,topK:100});
+      if(recalled.dropped_count)throw Error('Some payment memories could not be decrypted. Restore the namespace before relying on its history.');
+      const records=recalled.results.map(m=>({...m,namespace:getWalletNamespace(wallet,'social_split_trust'),category:'social_split_trust' as const}));
+      const verified=await tracked('evidence',()=>verifyRecalledSettlements(records,wallet,deps,{offset:p.evidenceOffset||0,limit:5,snapshot:p.evidenceSnapshot}),value=>({count:value.verifiedSettlements.length}));
+      return {...metadata,...verified};
+    }
+    return recallAll();
+  }
   if(p.action==='smart_split'){
     const draft=parseBillDraft(p.text!,state.contacts,wallet);
     return {status:'READY',draft,...await recallAll()};

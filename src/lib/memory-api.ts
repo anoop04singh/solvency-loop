@@ -1,17 +1,37 @@
-import {validatePayload, type MemoryPayload, type RecalledMemory, type SettlementCursor } from './memory-protocol';
+import {validatePayload, type MemoryPayload, type MemoryReadPhase, type RecalledMemory, type SettlementCursor } from './memory-protocol';
 import {autopilotRequestId} from './autopilot-request';
 import {authorizeMemoryRequest} from './memory-session';
 import type { VerifiedSettlement } from './financial-insights';
 import type {BillDraft} from './bill-draft';
-import type {AgentExecution,PublicSocialPreference} from './autopilot-types';
+import type {AgentExecution,PublicSocialPreference,GroupConvention} from './autopilot-types';
+import {requireAddress} from './config';
 import {AgentReplyError,isAgentAction,GEMINI_MODEL,type AgentTurn} from './agent-types';
 import {isSplitContinuation} from './split-continuation';
 import {isPendingSplitsQuestion} from './agent-questions';
 import {notifyAgentProgress,type AgentProgressObserver} from './agent-progress';
 import {readAgentProgressResponse} from './agent-progress-stream';
 import type {AgentStreamError} from './agent-progress-stream';
-export interface MemoryResponse { execution?:AgentExecution;agentMemorySaved?:boolean;publicPreferences?:PublicSocialPreference[]; status?: string; count?: number; scanned?:number; draft?:BillDraft; agent?:AgentTurn; memories?: RecalledMemory[]; learnedMemories?:RecalledMemory[]; createdMemories?:RecalledMemory[]; verifiedSettlements?:VerifiedSettlement[]; rejectedEvidenceCount?:number; evidenceLimitReached?:boolean; purchaseId?:string; tatumAnchor?: { checkpoint: string; usdcBalance?:number }; result?: { truncated?: boolean }; nextCursor?: SettlementCursor | null; }
+export interface MemoryResponse { readPhase?:MemoryReadPhase;memoryAccountId?:string;nextEvidenceOffset?:number|null;evidenceSnapshot?:string;groups?:GroupConvention[];execution?:AgentExecution;agentMemorySaved?:boolean;publicPreferences?:PublicSocialPreference[]; status?: string; count?: number; scanned?:number; draft?:BillDraft; agent?:AgentTurn; memories?: RecalledMemory[]; learnedMemories?:RecalledMemory[]; createdMemories?:RecalledMemory[]; verifiedSettlements?:VerifiedSettlement[]; rejectedEvidenceCount?:number; evidenceLimitReached?:boolean; purchaseId?:string; tatumAnchor?: { checkpoint: string; usdcBalance?:number }; result?: { truncated?: boolean }; nextCursor?: SettlementCursor | null; }
 export class AutopilotUncertainError extends Error {constructor(public requestId:string){super('The agent response was interrupted. Check its on-chain receipt before another financial action.');}}
+async function recallPersonalLearning(payload:MemoryPayload,sign:(input:{message:Uint8Array})=>Promise<{signature:string}>):Promise<MemoryResponse>{
+  const personal=await requestMemory({...payload,readPhase:'personal'},sign);
+  const accountId=personal.memoryAccountId;
+  const sameAccount=(part:MemoryResponse)=>{if(part.memoryAccountId!==accountId)throw Error('Your memory account changed while loading. Authorize sign-in again.');};
+  const social=await requestMemory({...payload,readPhase:'social'},sign);sameAccount(social);
+  const verifiedSettlements:VerifiedSettlement[]=[];
+  let rejectedEvidenceCount=0,evidenceLimitReached=false,offset=0,snapshot:string|undefined,anchor=personal.tatumAnchor;
+  for(let page=0;page<4;page++){
+    const evidence=await requestMemory({...payload,readPhase:'evidence',evidenceOffset:offset,...(snapshot?{evidenceSnapshot:snapshot}:{})},sign);
+    sameAccount(evidence);verifiedSettlements.push(...evidence.verifiedSettlements!);
+    rejectedEvidenceCount+=evidence.rejectedEvidenceCount!;evidenceLimitReached ||= evidence.evidenceLimitReached===true;anchor=evidence.tatumAnchor;
+    if(evidence.nextEvidenceOffset===null){
+      return {memories:[...new Map([...personal.memories!,...social.memories!].map(m=>[m.namespace+':'+m.blob_id,m])).values()],verifiedSettlements:[...verifiedSettlements,...social.verifiedSettlements!],rejectedEvidenceCount,evidenceLimitReached,publicPreferences:social.publicPreferences,groups:social.groups,tatumAnchor:anchor};
+    }
+    if(evidence.nextEvidenceOffset!==offset+5||evidence.nextEvidenceOffset>15)throw Error('Evidence pagination did not advance. Personal insights were not marked ready.');
+    offset=evidence.nextEvidenceOffset;snapshot=evidence.evidenceSnapshot;
+  }
+  throw Error('Evidence verification did not finish. Retry sign-in; no partial learning result was accepted.');
+}
 async function readMemoryJsonResponse(response:Response,action:MemoryPayload['action']):Promise<{ok:boolean;data:MemoryResponse&Partial<AgentStreamError>}>{
   const text=await response.text();
   let value:unknown;try{value=JSON.parse(text);}catch{/* Hosts may return an HTML gateway error. */}
@@ -34,7 +54,8 @@ async function readMemoryJsonResponse(response:Response,action:MemoryPayload['ac
   return {ok:false,data:{...data,error} as MemoryResponse&Partial<AgentStreamError>};
 }
 export async function requestMemory(payload: MemoryPayload, sign: (input: { message: Uint8Array }) => Promise<{ signature: string }>,onProgress?:AgentProgressObserver): Promise<MemoryResponse> {
-  if(payload.action==='agent_chat')validatePayload(payload);
+  if(payload.action==='agent_chat'||payload.action==='recall_all')validatePayload(payload);
+  if(payload.action==='recall_all'&&!payload.readPhase)return recallPersonalLearning(payload,sign);
   const progress=payload.action==='agent_chat'?onProgress:undefined;
   const stream=!!progress||['recall_all','recall_learning'].includes(payload.action);
   notifyAgentProgress(progress,'authorization','active');
@@ -55,6 +76,13 @@ export async function requestMemory(payload: MemoryPayload, sign: (input: { mess
     throw new Error(message);
   }
   notifyAgentProgress(progress,'response','active');
+  if(payload.action==='recall_all'&&payload.readPhase){
+    if(data.readPhase!==payload.readPhase||!data.memoryAccountId||requireAddress(data.memoryAccountId)!==data.memoryAccountId||authorization.payload.sessionAccountId&&authorization.payload.sessionAccountId!==data.memoryAccountId||!/^\d+$/.test(String(data.tatumAnchor?.checkpoint||''))||data.execution||data.createdMemories?.length)throw Error('The personal learning phase could not be validated. No partial insights were accepted.');
+    if(payload.readPhase==='personal'&&!Array.isArray(data.memories))throw Error('Personal memory is incomplete.');
+    if(payload.readPhase==='social'&&(!Array.isArray(data.memories)||!Array.isArray(data.verifiedSettlements)||!Array.isArray(data.publicPreferences)||!Array.isArray(data.groups)))throw Error('Shared context is incomplete.');
+    if(payload.readPhase==='evidence'&&(!Array.isArray(data.verifiedSettlements)||typeof data.rejectedEvidenceCount!=='number'||!Number.isInteger(data.rejectedEvidenceCount)||data.rejectedEvidenceCount<0||typeof data.evidenceSnapshot!=='string'||!/^[a-f0-9]{64}$/.test(data.evidenceSnapshot)||data.nextEvidenceOffset!==null&&(!Number.isInteger(data.nextEvidenceOffset)||typeof data.nextEvidenceOffset!=='number')))throw Error('Payment evidence is incomplete.');
+    return data;
+  }
   if(payload.action==='recall_learning'&&!Array.isArray(data.learnedMemories))throw new Error('The learned preference response is incomplete.');
   const chainRead=payload.action==='agent_chat'&&isPendingSplitsQuestion(payload.text!);
   if(['recall_all','refresh_learning','smart_split','agent_chat'].includes(payload.action)&&(!/^\d+$/.test(String(data.tatumAnchor?.checkpoint||''))||(!chainRead&&(!Array.isArray(data.memories)||!Array.isArray(data.verifiedSettlements)||typeof data.rejectedEvidenceCount!=='number'||!Number.isInteger(data.rejectedEvidenceCount)||data.rejectedEvidenceCount<0))))throw new Error('The learning response is incomplete. Retry your personal learning; no empty fallback was used.');

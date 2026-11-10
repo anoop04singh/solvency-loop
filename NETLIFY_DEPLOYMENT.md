@@ -8,21 +8,27 @@ Set the variables listed in .env.example through Netlify's environment settings.
 
 /api/config reports missing configuration and key/address mismatches without returning secret values. A successful configuration check does not prove that relayer requests will complete or that a wallet has granted memory access.
 
-## Sign-in uses a live response stream
+## Sign-in uses bounded authenticated reads
 
-The browser requests NDJSON for recall_all and recall_learning. The server authenticates the wallet request first, then immediately sends a keepalive and emits another every five seconds while the actual account, Walrus recall and chain-evidence checks run. Progress events describe real stages; keepalives are transport traffic and do not claim progress or success.
+The browser divides recall_all into sequential personal-memory, social-context and settlement-evidence requests. Each phase carries a fresh signed envelope and repeats the live wallet/profile/account/delegate checks. Evidence is verified in pages of at most five candidates, retaining the original total cap of 20. A hash binds continuation pages to the same selected evidence snapshot; changes fail closed and require a fresh sign-in.
+
+Quiet Memory's existing in-memory key signs the phases without extra wallet popups. Individual-approval mode continues to require a signature for each request. The client aggregates the parts only after every phase and evidence page succeeds for the same owned account.
+
+The browser requests NDJSON for these reads and recall_learning. After authenticating, the server immediately sends a keepalive and emits another every five seconds while work runs. Progress events describe real stages; keepalives are transport traffic and do not claim progress or success.
 
 Only the final validated result completes sign-in. Disconnects, missing result frames, failed evidence checks and incomplete responses remain failures. There is no successful empty-memory fallback, no automatic financial retry, no new memory write and no change to account-wide consent or the one-hour Quiet Memory grant.
 
-An observed pre-fix recall on 10 November 2026 returned HTTP 504 with an HTML **Inactivity Timeout** after about 33 seconds. Separate signed requests succeeded in approximately 28–31 seconds, making the failure intermittent. The buffered JSON response sent no data until all work completed. The streaming path prevents this idle gap on adapters/proxies that forward streaming responses.
+An observed pre-fix recall on 10 November 2026 returned HTTP 504 with an HTML **Inactivity Timeout** after about 33 seconds. Separate signed requests succeeded in approximately 28–31 seconds, making the failure intermittent. The buffered JSON response sent no data until all work completed.
 
 The client also recognizes hosting timeout JSON and HTML, displays the HTTP status and an available Netlify request reference, and avoids exposing platform stacks. An interrupted autonomous command still requires checking its original on-chain receipt.
 
-A genuine Quiet Memory verification against the patched handler and live Tatum/Walrus data returned its first frame in 96 ms and completed in 31.6 seconds with all 35 recalled memories for the affected verification wallet. No memory or financial write was requested. This verifies handler behavior; the deployed Netlify adapter must also forward the stream after the release is rebuilt.
+Streaming alone was insufficient on this site: a live NDJSON response delivered keepalives but was still truncated about 30 seconds after its first frame, immediately before evidence verification could finish. A local genuine Quiet Memory check completed the same 35-memory workload in 31.6 seconds. Splitting the work addresses this observed per-invocation cutoff; keepalives separately address idle gaps. No memory or financial write was requested by these diagnostics.
+
+The phased handler subsequently loaded all 35 memories through real authenticated reads in about 50 seconds overall: personal memory took 8.9 seconds, social context 20.7 seconds, and the two evidence pages 12.4 and 8.0 seconds. Repeated bill and receipt reads are shared only within the social request; authorization and delegate state are never reused across phases. These timings describe that verification run, not a guaranteed provider latency.
 
 ## Total execution time is a separate limit
 
-Netlify documents a 60-second synchronous function limit, including streamed responses. The application's Next.js maxDuration = 300 declarations retain Vercel compatibility; they do not raise Netlify's limit. Keepalives address inactivity, not an invocation that exceeds its total budget.
+Netlify's current documentation lists a 60-second synchronous function limit, including streamed responses; the affected site's observed cutoff was shorter. The application's Next.js maxDuration = 300 declarations retain Vercel compatibility; they do not raise the host's actual limit. Keepalives address inactivity, not an invocation that exceeds its total budget.
 
 If logs show the full function reaching that limit, investigate the named provider/stage and workload. Sustained operations beyond 60 seconds need a separately designed background/chunked workflow or a compatible host. Do not increase an unsupported configuration value, remove authentication, skip evidence verification, or retry a submitted financial action to hide a timeout.
 
@@ -30,7 +36,7 @@ If logs show the full function reaching that limit, investigate the named provid
 
 1. Confirm that the new commit is deployed, then reload the workspace so it uses the new browser bundle.
 2. Connect the actual wallet, authorize Quiet Memory and wait for personal insights.
-3. In browser Network tools, /api/memory for sign-in should request Accept: application/x-ndjson; the successful response should use the same media type.
+3. In browser Network tools, /api/memory should show sequential signed recall_all phases (personal, social and evidence), each requesting Accept: application/x-ndjson. Successful responses should use the same media type.
 4. Confirm that the response receives early frames and eventually a final result. A keepalive alone is not successful sign-in.
 5. For a failure, use the displayed hosting request reference to find the invocation in Netlify's function logs. Keep signatures, grants, keys, memory contents and .env.local out of shared screenshots.
 

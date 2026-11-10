@@ -5,6 +5,7 @@ import type {MemoryDelegation} from './memory-session-protocol';
 import {isLearningChoice,MAX_EXCHANGE_CHARS,MAX_RECENT_EXCHANGES,type AgentExchange,type LearningChoice} from './agent-learning';
 import {isSplitContinuation,type SplitContinuation} from './split-continuation';
 export type MemoryAction = 'recall_all' | 'recall_learning' | 'refresh_learning' | 'smart_split' | 'agent_chat' | 'agent_status' | 'remember' | 'analyze' | 'restore' | 'save_preference' | 'edit_learning' | 'settlement' | 'sync_settlements' | 'record_purchase' | 'regret_checkin';
+export type MemoryReadPhase='personal'|'social'|'evidence';
 export interface SettlementCursor { txDigest: string; eventSeq: string; cursor?: string; }
 export interface MemoryPayload {
   action: MemoryAction; walletAddress: string; category?: SolvencyNamespaceCategory; text?: string; query?: string;
@@ -20,6 +21,7 @@ export interface MemoryPayload {
   autoExecute?:boolean;autoMemory?:boolean;requestId?:string;
   incomingSplitId?:string;incomingOperation?:'pay'|'activate';
   allowanceEpoch?:string;
+  readPhase?:MemoryReadPhase;evidenceOffset?:number;evidenceSnapshot?:string;
 }
 export interface MemoryEnvelope { payload: MemoryPayload; issuedAt: number; nonce: string; origin: string; signature: string; delegation?:MemoryDelegation; }
 export interface RecalledMemory { blob_id: string; text: string; distance?: number; namespace: string; category: SolvencyNamespaceCategory; created_at?: string; }
@@ -29,6 +31,11 @@ export function validatePayload(value: unknown): MemoryPayload {
   requireAddress(p.walletAddress);
   if(p.sessionAccountId!==undefined)requireAddress(p.sessionAccountId,'Session account');
   if (!['recall_all', 'recall_learning', 'refresh_learning', 'smart_split', 'agent_chat','agent_status', 'remember', 'analyze', 'restore', 'save_preference', 'edit_learning', 'settlement', 'sync_settlements', 'record_purchase', 'regret_checkin'].includes(p.action)) throw new Error('Unsupported memory action.');
+  if(p.readPhase!==undefined&&(p.action!=='recall_all'||!['personal','social','evidence'].includes(p.readPhase)))throw Error('Invalid personal learning phase.');
+  if(p.readPhase!==undefined&&(p.autoExecute||p.autoMemory))throw Error('Personal learning phases are read-only.');
+  if(p.evidenceOffset!==undefined&&(p.readPhase!=='evidence'||!Number.isInteger(p.evidenceOffset)||p.evidenceOffset<0||p.evidenceOffset>15||p.evidenceOffset%5!==0))throw Error('Invalid evidence page.');
+  if(p.evidenceSnapshot!==undefined&&(p.readPhase!=='evidence'||typeof p.evidenceSnapshot!=='string'||!/^[a-f0-9]{64}$/.test(p.evidenceSnapshot)))throw Error('Invalid evidence snapshot.');
+  if(p.readPhase==='evidence'&&(p.evidenceOffset||0)>0&&!p.evidenceSnapshot)throw Error('Continue the same evidence snapshot.');
   if(p.action==='edit_learning'&&!isLearningChoice(p.learningChoice))throw new Error('Choose a valid learned preference.');
   for(const flag of [p.autoExecute,p.autoMemory])if(flag!==undefined&&typeof flag!=='boolean')throw Error('Invalid agent permission flag.');
   if(p.autoExecute&&(typeof p.allowanceEpoch!=='string'||!/^\d{1,20}$/.test(p.allowanceEpoch)||BigInt(p.allowanceEpoch)>18446744073709551615n))throw Error('The signed command must identify its allowance policy version.');

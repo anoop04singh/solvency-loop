@@ -8,7 +8,7 @@ import {tatumSuiClient} from './tatum-rpc-client';
 import type {OnChainUserProfile} from './onchain-user-manager';
 import type {RecalledMemory} from './memory-protocol';
 import {memoryRecord,type VerifiedSettlement} from './financial-insights';
-import {verifyRecalledSettlements} from './memory-evidence';
+import {settlementReadScope,verifyRecalledSettlements} from './memory-evidence';
 import {commitMemoryBatch} from './memory-batch';
 export const NETWORK_COMMONS='sl_network_commons';
 export function publicBillBenchmarks(bills:{id:string;title:string;totalUnits:string;people:number}[]){
@@ -18,6 +18,7 @@ export function publicBillBenchmarks(bills:{id:string;title:string;totalUnits:st
 export interface SocialContext {publicPreferences:PublicSocialPreference[];groups:GroupConvention[];networkSettlements:VerifiedSettlement[];memories:RecalledMemory[];}
 export async function loadSocialContext(profile:OnChainUserProfile,client:Pick<MemWal,'recall'|'rememberBulkAndWait'>,publish=false):Promise<SocialContext>{
  const empty:SocialContext={publicPreferences:[],groups:[],networkSettlements:[],memories:[]},c=autopilotConfig();if(!c)return empty;
+ const evidence=settlementReadScope({transaction:p=>tatumSuiClient.getTransactionBlock(p),object:p=>tatumSuiClient.getObject(p)});
  const directory=await autopilotObject(c.directoryId,'AgentDirectory'),publicPreferences:PublicSocialPreference[]=[];
  for(let i=0;i<profile.contacts.length;i+=8){const rows=await Promise.all(profile.contacts.slice(i,i+8).map(p=>fetchPublicPreference(p.walletAddress,directory)));publicPreferences.push(...rows.filter((p):p is PublicSocialPreference=>!!p&&p.active));}
  const own=await fetchAutopilotState(profile.wallet),groups=own.groups.filter(g=>g.members.every(m=>m.approved));
@@ -27,20 +28,20 @@ export async function loadSocialContext(profile:OnChainUserProfile,client:Pick<M
  const {packageId}=contractConfig(),events=await tatumSuiClient.queryEvents({query:{MoveEventType:packageId+'::core::ShareSettledEvent'},limit:50,order:'descending'});
  const seen=new Set<string>();
  for(const event of events.data){const r=event.parsedJson as Record<string,unknown>;if(!r||!known.has(String(r.payer))||seen.has(event.id.txDigest+':'+event.id.eventSeq))continue;seen.add(event.id.txDigest+':'+event.id.eventSeq);if(seen.size>10)break;
-  const obj=await tatumSuiClient.getObject({id:requireAddress(r.split_id),options:{showContent:true}});if(obj.error||obj.data?.content?.dataType!=='moveObject'||obj.data.content.type!==packageId+'::core::GroupSplitEscrow<'+SUI_MAINNET_USDC_TYPE+'>')throw Error('A shared settlement source is unavailable or has the wrong token.');
+  const obj=await evidence.object({id:requireAddress(r.split_id),options:{showContent:true}});if(obj.error||obj.data?.content?.dataType!=='moveObject'||obj.data.content.type!==packageId+'::core::GroupSplitEscrow<'+SUI_MAINNET_USDC_TYPE+'>')throw Error('A shared settlement source is unavailable or has the wrong token.');
   const createdAtMs=Number(moveFields(obj.data.content.fields).created_at_ms);candidates.push({digest:event.id.txDigest,eventSeq:event.id.eventSeq,splitId:r.split_id,subject:r.payer,recipient:r.recipient,amountUnits:String(r.amount),lagMs:Number(r.settled_at_ms)-createdAtMs,settledAtMs:Number(r.settled_at_ms)});
  }
  const networkSettlements:VerifiedSettlement[]=[];
  const recipients=[...new Set(candidates.map(r=>requireAddress(r.recipient)))];
  for(const recipient of recipients){const records=candidates.filter(r=>r.recipient===recipient).slice(0,20).map(r=>({blob_id:'chain-candidate',text:'SOLVENCY_SETTLEMENT_V1 '+JSON.stringify(r),category:'social_split_trust' as const,namespace:NETWORK_COMMONS}));
-  const verified=await verifyRecalledSettlements(records,recipient,{transaction:p=>tatumSuiClient.getTransactionBlock(p),object:p=>tatumSuiClient.getObject(p)});networkSettlements.push(...verified.verifiedSettlements.map(s=>({...s,network:true})));
+  const verified=await verifyRecalledSettlements(records,recipient,evidence);networkSettlements.push(...verified.verifiedSettlements.map(s=>({...s,network:true})));
  }
  const selected=[...new Map(networkSettlements.map(s=>[s.digest+':'+s.eventSeq,s])).values()].sort((a,b)=>b.settledAtMs-a.settledAtMs).slice(0,20);
  if(!publish)return {publicPreferences,groups,networkSettlements:selected,memories:[]};
  const observed:{id:string;title:string;totalUnits:string;people:number}[]=[];
  const billEvents=await tatumSuiClient.queryEvents({query:{MoveEventType:packageId+'::core::SplitCreatedEvent'},limit:50,order:'descending'});
  for(const e of billEvents.data){const data=e.parsedJson as Record<string,unknown>;if(data.creator!==profile.wallet&&!known.has(String(data.creator)))continue;if(observed.length>=20)break;
-  const object=await tatumSuiClient.getObject({id:requireAddress(data.split_id),options:{showContent:true}});if(object.error||object.data?.content?.dataType!=='moveObject'||object.data.content.type!==packageId+'::core::GroupSplitEscrow<'+SUI_MAINNET_USDC_TYPE+'>')throw Error('A public bill benchmark source could not be verified.');
+  const object=await evidence.object({id:requireAddress(data.split_id),options:{showContent:true}});if(object.error||object.data?.content?.dataType!=='moveObject'||object.data.content.type!==packageId+'::core::GroupSplitEscrow<'+SUI_MAINNET_USDC_TYPE+'>')throw Error('A public bill benchmark source could not be verified.');
   const f=moveFields(object.data.content.fields),entries=moveFields(f.participants).contents;if(f.creator!==data.creator||String(f.total_bill_amount)!==String(data.total_amount)||f.title!==data.title||!Array.isArray(entries))throw Error('Public bill benchmark event mismatch.');observed.push({id:object.data.objectId,title:decodeBillTitle(String(f.title)).title,totalUnits:String(f.total_bill_amount),people:entries.length+1});
  }
  const publicRecords=[...publicPreferences.map(p=>'SOLVENCY_PUBLIC_PREF_V1 '+JSON.stringify(p)),...groups.map(g=>'SOLVENCY_GROUP_V1 '+JSON.stringify(g)),...selected.map(s=>'SOLVENCY_PUBLIC_SETTLEMENT_V1 '+JSON.stringify({...s,subject:s.payer})),...publicBillBenchmarks(observed).map(b=>'SOLVENCY_BILL_BENCHMARK_V1 '+JSON.stringify(b))];

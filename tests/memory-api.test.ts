@@ -14,7 +14,7 @@ test('sign-in negotiates streaming and rejects a heartbeat-only response instead
   assert.equal(envelope.origin,'https://workspace.example');
   if(interrupted)return new Response('{"type":"heartbeat"}\n',{headers:{'Content-Type':'application/x-ndjson'}});
   return agentProgressResponse(async()=>envelope.payload.action==='recall_all'
-   ?{memories:[],verifiedSettlements:[],rejectedEvidenceCount:0,tatumAnchor:{checkpoint:'123'}}
+   ?{readPhase:envelope.payload.readPhase,memoryAccountId:wallet,memories:[],verifiedSettlements:[],rejectedEvidenceCount:0,publicPreferences:[],groups:[],evidenceSnapshot:'a'.repeat(64),nextEvidenceOffset:null,tatumAnchor:{checkpoint:'123'}}
    :{learnedMemories:[]},()=>({error:'failed',noFinancialExecution:true}));
  };
  try{
@@ -23,6 +23,31 @@ test('sign-in negotiates streaming and rejects a heartbeat-only response instead
   assert.deepEqual((await requestMemory({action:'recall_learning',walletAddress:wallet},sign)).learnedMemories,[]);
   interrupted=true;
   await assert.rejects(requestMemory({action:'recall_all',walletAddress:wallet},sign),/interrupted/);
+ }finally{globalThis.fetch=originalFetch;if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else Reflect.deleteProperty(globalThis,'window');}
+});
+
+test('personal learning completes all signed phases and bounded evidence pages before returning insights',async()=>{
+ const originalFetch=globalThis.fetch,descriptor=Object.getOwnPropertyDescriptor(globalThis,'window'),wallet='0x'+'1'.repeat(64),account='0x'+'2'.repeat(64),snapshot='a'.repeat(64);
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{origin:'https://workspace.example'}}});
+ const phases:string[]=[],offsets:number[]=[];let mode='ok';
+ globalThis.fetch=async(_input,init)=>{
+  const envelope=JSON.parse(String(init?.body)),p=envelope.payload;
+  phases.push(p.readPhase);
+  const meta={readPhase:p.readPhase,memoryAccountId:mode==='account'&&p.readPhase==='social'?wallet:account,tatumAnchor:{checkpoint:'123'}};
+  if(p.readPhase==='personal')return Response.json({...meta,memories:[{blob_id:'actual-test-fact',namespace:'test-only',category:'habit_regret',text:'An owned test fact'}]});
+  if(p.readPhase==='social'){
+   if(mode==='failure')return Response.json({error:'Shared context unavailable',noFinancialExecution:true},{status:502});
+   return Response.json({...meta,memories:[],verifiedSettlements:[],publicPreferences:[],groups:[]});
+  }
+  offsets.push(p.evidenceOffset);if(p.evidenceOffset>0)assert.equal(p.evidenceSnapshot,snapshot);
+  return Response.json({...meta,verifiedSettlements:[],rejectedEvidenceCount:1,evidenceLimitReached:true,evidenceSnapshot:snapshot,nextEvidenceOffset:mode==='cursor'?p.evidenceOffset:p.evidenceOffset===0?5:null});
+ };
+ try{
+  const sign=async({message}:{message:Uint8Array})=>{assert.match(new TextDecoder().decode(message),/readPhase/);return {signature:'test-only'};};
+  const result=await requestMemory({action:'recall_all',walletAddress:wallet},sign);
+  assert.deepEqual(phases,['personal','social','evidence','evidence']);assert.deepEqual(offsets,[0,5]);
+  assert.equal(result.memories?.length,1);assert.equal(result.rejectedEvidenceCount,2);assert.equal(result.evidenceLimitReached,true);
+  for(mode of ['account','failure','cursor'])await assert.rejects(requestMemory({action:'recall_all',walletAddress:wallet},sign),/account changed|Shared context unavailable|pagination did not advance/);
  }finally{globalThis.fetch=originalFetch;if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else Reflect.deleteProperty(globalThis,'window');}
 });
 
