@@ -1,42 +1,247 @@
 # SolvencyLoop
 
-A Next.js 15 App Router application with a Gemini-led financial workspace, Sui Mainnet profiles, contact graphs, Circle USDC bill splits, upfront escrow, 24-hour cooldown vaults, and user-owned MemWal accounts with wallet-scoped Walrus memory. There is no application database or local user-state store.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./public/brand/solvencyloop-logo-dark.svg" />
+  <img src="./public/brand/solvencyloop-logo.svg" alt="SolvencyLoop" width="280" />
+</picture>
 
-Read the [technical blog](./docs/SOLVENCYLOOP_TECHNICAL_BLOG.md) for the architecture, Tatum API mapping, Walrus integration and payment/regret learning. The accompanying [verification report](./docs/VERIFICATION_REPORT.md) includes Mainnet receipts, asset reconciliation and the measured limits of the current learning dataset.
+**A financial assistant that turns verified payments and remembered preferences into better-informed next actions.**
 
-The [brand asset kit](./public/brand/README.md) contains the current workspace infinity logo, light/dark wordmarks, Hanken Grotesk typography assets and favicon exports. Blog artwork follows the same workspace identity.
+SolvencyLoop brings conversational bill splitting, native-USDC settlement, purchase reflections and optional funded automation into one wallet-owned workspace. Gemini interprets what you want to do. Tatum connects the application to live Sui Mainnet state. Walrus Memory preserves useful context across sessions. Sui Move enforces the financial rules.
 
-The latest extension adds opt-in quiet memory, a funded and revocable USDC agent allowance, event-driven incoming-share handling, confirmed-receipt learning, public self-published preferences and unanimously approved group conventions. **Existing installations need a compatible package upgrade and a new shared agent directory before funded automation can be enabled.** Follow [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md) for the exact Sui CLI upgrade, new environment variables, consent boundaries and event-delivery setup. Original core package/registry IDs stay unchanged; the new extension is disabled by default. Manual screens remain available.
+**[Open the live application](https://solvencyloop.netlify.app/app)** · **[Explore the landing page](https://solvencyloop.netlify.app/)** · **[Read the technical article on Notion](https://anoopsinghwork.notion.site/SolvencyLoop-Building-a-Financial-Assistant-That-Remembers-What-Actually-Happened-41458f741fb5806bb9d4ff7cdc8ab980)** · **[Verification report](./docs/VERIFICATION_REPORT.md)**
 
-**Current state:** the object-factory contract is published on Sui Mainnet (see `move/solvency_loop/Published.toml`). The application provides wallet-owned onboarding, personal contacts, real USDC expenses, payment history, cooldown savings and user-authored memory. No sample contacts, preset bills or memory-seeding action are enabled. See `PRODUCTION_READINESS.md` for verification evidence and remaining wallet-approved checks.
+The [repository edition of the technical blog](./docs/SOLVENCYLOOP_TECHNICAL_BLOG.md) contains implementation links and the accompanying evidence. The [brand kit](./public/brand/README.md) includes the current infinity logo, wordmarks, typography and favicon assets.
 
-The public landing page at `/` explains the application with original SVG illustrations and Framer Motion interactions. Choose **Open app** to enter `/app`. Existing `/?split=...` bill links redirect to the workspace; new links use `/app?split=...`. Wallet providers are scoped to the workspace so browsing the landing page does not initialize wallet or chain requests.
+## Contents
 
-The workspace opens on a Gemini + Walrus chat experience following the supplied LLM-native Swiss editorial reference, including its fluid WebGL shader. Exact allocations and eligible actions appear as review cards. The manual screens remain accessible through the workspace switcher, with existing Vanta feedback; the landing retains its original design. Shader/fog presentation supports pause, reduced motion, data saving, hidden tabs and static WebGL fallbacks. Animations never confirm or authorize payments. Generated Tatum tokens remain untouched. See [AGENT_GUIDE.md](./AGENT_GUIDE.md) for configuration, privacy, the coupled Gemini/Walrus request flow and verification limits.
+- [Why this application is different](#why-this-application-is-different)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tatum and Walrus: the intersection](#tatum-and-walrus-the-intersection)
+- [How Walrus Memory strengthens the application](#how-walrus-memory-strengthens-the-application)
+- [The learning loops](#the-learning-loops)
+- [Onboarding and the real application flow](#onboarding-and-the-real-application-flow)
+- [Object factory structure](#object-factory-structure)
+- [Verification and demonstrated limits](#verification-and-demonstrated-limits)
+- [Local setup](#local-setup)
+- [Deploy the Move contract](#deploy-the-move-contract-to-sui-mainnet)
+- [Environment and memory configuration](#configure-walrus-memory-and-wallets)
+- [Validation and production](#validation-and-production)
 
-**Access policy:** a wallet-owned MemWal account is mandatory. Users create or reuse that account, authorize the app delegate, then register their profile before the financial dashboard opens. The contract accepts an actual MemWalAccount object and checks its owner and profile link for financial actions. Payments and vaults use only native Circle USDC on Sui Mainnet. SUI is needed for network gas. There is no guest payment, off-chain settlement, card/fiat payment, alternative token, or MemWal-free payment path. Existing-fund recovery still requires the user's genuine linked MemWal account, but works after memory revocation/freezing to avoid trapping funds.
+## Why this application is different
 
-The workspace uses **Split a Bill / Regret Check-In / Settle Shares** tabs, a full allocation card and a combined contact/memory proof drawer. New financial inputs and choices start empty. After owned MemWal onboarding, one signed session request recalls that user's existing memories and verifies the available settlement evidence before displaying a personalized quota. Enter Food/Drinks amounts directly or use authenticated `/api/smart-split` with real on-chain contacts. Fresh learning precedes every final bill review. No comparison mode, preset bills or seed memories are offered. Contact changes stay staged until wallet approval. Bulk settlement reviews 1–20 own active unpaid shares using the existing deployed function; no contract redeployment is needed. See [LIFECYCLE.md](./LIFECYCLE.md) for the creator-to-counterparty learning loop and the attachment's necessary transport, precision and escrow corrections, and [USER_GUIDE.md](./USER_GUIDE.md) for complete flows. Workspace typography uses locally bundled Hanken Grotesk under the included [SIL Open Font License](./public/fonts/HankenGrotesk-OFL.txt).
+A ledger can show that someone paid. It does not explain why a friend should be excluded from drinks, which purchases a person regretted, or how those facts should influence the next bill. A conversation can discuss those things, but a new conversation needs reliable context and a payment system still needs enforceable rules.
+
+SolvencyLoop connects the full cycle:
+
+**Intent → recall → verify → prepare → authorize → settle → remember → improve the next decision.**
+
+Its novelty is the connection between persistent behavioral context and fresh on-chain evidence:
+
+1. **Preferences can change exact financial inputs.** A saved alcohol exclusion changes item allocations. A saved deposit policy or qualifying repayment history can change a share's upfront-escrow flag. The application computes the amounts before building the transaction.
+2. **Payments become reusable evidence.** A confirmed settlement can be remembered with its transaction digest, event identity, amount, timestamp and checkpoint. Future use rechecks its Sui receipt rather than treating recalled prose as proof.
+3. **Reflection adds information a chain cannot supply.** Worth It/Regretted feedback connects a purchase to its time and cash-flow context. Qualifying patterns can change the suggested spending room and cooldown amount.
+4. **Automation has a durable record and a bounded budget.** Eligible autonomous financial commands require a committed Walrus audit before execution and a separately funded, owner-approved on-chain allowance.
+5. **Continuity does not require saving every message.** Recent conversation and an unfinished split can stay in the current tab. Durable writes focus on supported standing preferences, explicit records, verified outcomes and required action audits.
+
+Here, “learning” means recalling useful facts and applying explicit, inspectable rules. It does not mean fine-tuning Gemini, producing a universal credit score or guaranteeing a financial outcome.
+
+## Features
+
+| Capability | What the user can do | What makes it contextual |
+| --- | --- | --- |
+| Gemini-led workspace | Describe a split, ask about pending bills, prepare a payment or request a cooldown in chat. | Relevant owned memories, actual contacts, loaded bills and verified payment evidence inform the structured response. |
+| Reviewed split canvas | Create equal, custom or itemized bills, choose categories and inspect each exact share. | Saved item exclusions and deposit policies shape the allocation; recent created-bill history supplies category suggestions. |
+| Contact continuation | Add a missing counterparty and continue an unfinished split with its known amount and people. | The current conversation carries the pending intent; a contact's wallet is never invented. |
+| Settlement and upfront escrow | Pay an eligible own share, review bulk settlement, fund a deposit, activate a funded bill, cancel or claim an eligible refund. | The contract checks participant identity, amounts, bill state and funding conditions. |
+| Six-hour regret check-ins | Rate a recorded purchase or a bill you created as Worth It or Regretted. | The creator's own bill share and original timestamp are used; feedback is recalled with live balance context. |
+| Safe-to-spend suggestions | Inspect wallet balance, reserve, loaded obligations, any suggested shield and the separate agent allocation. | Qualifying regret and cash-flow samples affect the suggestion. Funds are not locked merely because a bar changes. |
+| 24-hour cooldown vaults | Review and lock an actual native-USDC amount, then withdraw after maturity. | A suggestion can come from personal context; Move enforces the cooldown and relevant reserve rules. |
+| Quiet Memory | Approve a temporary memory session to reduce repeated personal-message prompts. | Each later request remains signed and bound to the exact wallet, linked account, origin and payload. |
+| Funded Autopilot, optional | Approve a dedicated executor, USDC budget, payees, action scopes, limits and expiry. | Eligible direct commands and configured incoming-share work use the owner's own allowance; receipts and memory connect the outcome back to future context. |
+| Memory and proof inspection | Recall notes and preferences, analyze submitted text, restore indexes, inspect provenance, and correct or stop using supported learned choices. | Memory is available for review rather than hidden behind an unexplained score. |
+| Public social preferences and groups | Publish selected social preferences or establish group conventions with member approval. | Only appropriate public facts are shared; private purchase reflections are not pooled into public bill benchmarks. |
+| Manual workspace | Use the split, settlement, regret, savings, account and memory screens directly. | Chat is the primary interaction, while the manual workflows remain available. |
+
+Financial flows use **native Circle USDC on Sui Mainnet**. SUI pays gas. A wallet-owned MemWal account is mandatory; an empty account is a valid starting point. There is no seeded-memory requirement or application demo account.
+
+## Architecture
+
+The frontend is **Next.js 15 App Router, React 19 and TypeScript**. The server integrates the pinned MemWal SDK and the official Google SDK with **`gemini-3.5-flash-lite`**. Financial objects live in Sui Move. There is no application database or durable local user-state store; the MemWal relayer still provides its own processing and retrieval index.
+
+```mermaid
+flowchart TD
+    User[Wallet owner] --> UI[Chat and manual workspace]
+    UI --> API[Signed memory and agent APIs]
+    API --> Context[Live state and recalled context]
+    Context --> Tatum[Tatum Sui Mainnet GraphQL gateway]
+    Context --> Memory[Account-scoped MemWal SDK]
+    Memory -->|Sui client reads| Tatum
+    Memory --> Relayer[MemWal relayer and retrieval index]
+    Relayer --> Walrus[Seal-encrypted blobs on Walrus]
+    Context --> Gemini[Gemini structured intent]
+    Gemini --> Validate[Deterministic validation and allocation]
+    Validate --> Authority[Owner review or funded allowance checks]
+    Authority --> Signer[Owner wallet or dedicated executor]
+    Signer --> Tatum
+    Tatum --> Sui[Sui Move objects and confirmed events]
+    Sui --> Evidence[Receipt verification and outcome learning]
+    Evidence --> Memory
+```
+
+The diagram shows the logical flow. Gemini and the MemWal relayer use their own service connections; Tatum supplies the application's Sui transport.
+
+| Layer | Responsibility | Implementation |
+| --- | --- | --- |
+| Interface | Landing, required onboarding, conversational and manual flows, live loading feedback and proof inspection. | [App workspace](./src/app/app/page.tsx), [components](./src/components), [landing](./src/components/landing/LandingPage.tsx) |
+| Intent | A fixed JSON schema, contact resolution, continuation and typed proposals. Gemini never signs transactions. | [Gemini integration](./src/lib/gemini.ts), [agent service](./src/lib/agent-service.ts), [action validation](./src/lib/agent-action.ts) |
+| Financial calculations | Micro-USDC allocation, exclusions, repayment summaries and spending-room calculations. | [Money arithmetic](./src/lib/money.ts), [expense engine](./src/lib/expense.ts), [insights](./src/lib/financial-insights.ts) |
+| Memory | Scoped recall, selected commits, receipt verification, request authorization and recovery. | [Memory service](./src/lib/memory-service.ts), [evidence checks](./src/lib/memory-evidence.ts), [authentication](./src/lib/memory-auth.ts) |
+| Connectivity | Authenticated GraphQL, SDK compatibility, pagination, read coalescing and pacing. | [Transport](./src/lib/tatum-request.ts), [compatibility facade](./src/lib/tatum-compatibility.ts), [browser proxy](./src/app/api/tatum-rpc/route.ts) |
+| Financial authority | Profiles, split lifecycle, escrow, reserves, vault maturity, allowance limits and receipts. | [Core Move module](./move/solvency_loop/sources/solvency_loop.move), [Autopilot module](./move/solvency_loop/sources/autopilot.move) |
+
+## Tatum and Walrus: the intersection
+
+**Tatum answers what is true on chain now. Walrus carries forward what is useful to remember.** Together they let the next action use both current financial reality and relevant history.
+
+### Tatum supplies live state and verifiable outcomes
+
+Application Sui traffic uses the authenticated gateway at `https://sui-mainnet.gateway.tatum.io/graphql`. Browser calls go through `/api/tatum-rpc`, keeping the Tatum API key on the server. Despite that proxy's historical name, its wire payload is GraphQL.
+
+| Application-facing operation | Use in SolvencyLoop |
+| --- | --- |
+| `getObject`, `multiGetObjects`, dynamic-field reads | Discover and validate profiles, genuine MemWal accounts, directories, bills and allowance receipts. |
+| Balance, coin and owned-object reads | Display current SUI/USDC balances, select transaction inputs, handle USDC address balances and discover cooldown vaults. |
+| Event and checkpoint queries | Load actual bill/settlement history and anchor observations to a checkpoint. |
+| Transaction reads and confirmation | Check successful effects and exact payment events before a fact becomes repayment evidence. |
+| Move metadata, resolution and simulation | Validate the deployed interface and prepare transactions with the official Sui Core SDK. |
+| Signed transaction execution | Submit an already signed transaction through the shared transport. |
+
+These are compatibility-facade operations mapped to GraphQL/Core APIs, not a list of separate REST endpoints. Read requests are paced and identical in-flight reads can be coalesced within a requester. Applicable provider retry delays are honored for reads; signed execution mutations are not automatically retried. Sui page sizes are capped at 50. [Transport implementation](./src/lib/tatum-request.ts), [pagination](./src/lib/tatum-pagination.ts).
+
+### Walrus supplies durable, owner-linked context
+
+The application constructs each MemWal client with the verified user's account, wallet-derived namespace and injected Tatum Sui client. The pinned client-injection patch keeps those SDK Sui reads on the same transport; it does not route all relayer, Gemini or Walrus traffic through Tatum. [Integration](./src/lib/walrus-tatum-memory.ts), [patch](./scripts/patch-memwal.mjs).
+
+The combined loop is concrete: recall a payment observation from Walrus, verify its underlying receipt through Tatum, compute the next bill's exact shares and escrow policy, execute under the appropriate authority, then remember the confirmed outcome. A remembered claim cannot substitute for a valid receipt, and a receipt cannot reveal a person's unrecorded purchase regret.
+
+The coupling also has enforceable boundaries. Registration and financial functions require the genuine linked MemWal protocol account. The autonomous command path requires a committed Walrus audit before invoking the executor. Fresh state and evidence verification use the application's configured Tatum transport. The Move contract does not itself call Gemini or verify every off-chain memory write, and manual capabilities do not all depend on an LLM response.
+
+## How Walrus Memory strengthens the application
+
+### Per-user ownership and recall
+
+Each wallet creates or reuses its own MemWal account. The app delegate and protocol package/registry IDs are shared infrastructure; personal account IDs are discovered on chain and linked to each user's profile. Every memory request checks the profile/account link, owner, active state and authorized delegate.
+
+Walrus Memory stores Seal-encrypted blobs, and committed results expose blob IDs for provenance. Its relayer performs processing and retrieval. SolvencyLoop uses the following SDK operations:
+
+| SDK method | Implemented use |
+| --- | --- |
+| `rememberAndWait` | Commit explicit notes, preferences, purchases, regret/cash-flow records and verified settlement facts. |
+| `rememberBulkAndWait` | Batch supported learned preferences, autonomous audits and receipt-derived records; check per-item commit results. |
+| `recall` | Retrieve relevant context before interpretation, bill review and recommendations. |
+| `analyzeAndWait` | Analyze user-submitted evidence through the memory SDK. |
+| `restore` | Rebuild namespace indexes, surfacing failed or truncated recovery. |
+
+See the official [Walrus SDK reference](https://docs.wal.app/walrus-memory/sdk/api-reference).
+
+### Useful structure instead of a transcript archive
+
+| Namespace or record family | What is retained | How it can matter later |
+| --- | --- | --- |
+| `social_split_trust` | Explicit payment/alcohol preferences, confirmed settlement facts and required action audits. | Item exclusions, deposit recommendations and auditable financial context. |
+| `habit_regret` | Recorded purchases and dated Worth It/Regretted feedback. | Personal reflection and qualifying local-hour regret patterns. |
+| `cashflow_elasticity` | Check-in balance/reserve context joined to a purchase. | A larger suggested shield when qualifying regret coincides with lower liquidity. |
+| `_learned` namespace | Supported standing bill-category and split-style choices, revisions and stop-using records. | Reuse a stable preference without asking the same question on every bill. |
+| Public social commons | Appropriate public preferences, approved group context and reverified on-chain observations. | Shared context without treating another person's private memories as available. |
+
+Personal namespaces are derived as `sl_<canonical-wallet-without-0x>_<category>`. They organize records inside an account; they are not separate permission boundaries.
+
+Commons records also use the caller's authorized account. Shared social context is rehydrated from public Sui data; the application does not gain access to another owner's private namespaces by using the same namespace name.
+
+Ordinary questions and every clarification are not automatically saved. Recent exchanges and a pending split stay in the tab. Under Quiet Memory, supported explicit standing statements may be selected for background storage, validated against the user's actual wording and deduplicated against current preferences. Explicit record requests, confirmed settlement facts and required autonomous audits use their own write paths. Users can inspect and correct supported learned choices. This is selective persistence with defined rules, not a claim that the system automatically learns every personal fact.
+
+### Access and privacy are explicit
+
+Quiet Memory uses a wallet-approved, in-memory browser key for at most one hour. Requests remain payload-signed; the grant does not authorize payments. The on-chain account delegate is a separate permission that the owner can revoke.
+
+Delegate access is account-wide, including memories from other applications in that account. The authorized server and processing services can see plaintext needed for their work; relevant recalled context is sent to Gemini. Encryption is not a promise that the app cannot read authorized data. Profiles, contacts, bills and financial objects are public on Sui. See [Walrus ownership and permissions](https://docs.wal.app/walrus-memory/contract/ownership-and-permissions) and the application's [agent/privacy guide](./AGENT_GUIDE.md).
+
+## The learning loops
+
+### Payment outcomes → next bill
+
+1. A participant settles a share, or an upfront-funded bill is activated, through the real Move flow.
+2. The application checks the successful transaction and exact `ShareSettledEvent` data through Tatum.
+3. A verified fact can be committed to the authorized owner's MemWal account. A counterparty's private account is not writable merely because somebody else initiated a payment.
+4. Later recall retrieves that fact; the application revalidates the receipt, package, native-USDC bill, event identity, amount and settlement timing.
+5. Qualifying history informs the next allocation alongside explicit preferences and bill-level choices.
+
+The current adaptive rule considers the latest five qualifying payments above the configured threshold, defaulting to **40 USDC**, and needs at least three observations. Average delay over seven days supports an upfront recommendation; average delay at most 24 hours supports standard settlement. Insufficient or intermediate history does not become an invented trust score. These recommendations affect reviewed inputs or explicitly consented Autopilot actions. [Implementation](./src/lib/financial-insights.ts).
+
+### Purchase reflection → spending-room suggestion
+
+A check-in opens after **six hours** for an owned recorded purchase or the creator's own share of a created bill. It writes the verdict and contextual records; it does not prove a merchant purchase occurred. The separate cooldown vault always retains its **24-hour** contract maturity.
+
+The current suggestion starts with:
+
+```text
+Safe to spend = current wallet USDC − reserve − loaded unpaid shares − suggested shield
+```
+
+The calculation clamps allocations to available funds. A regret shield needs at least three valid ratings in the last 90 days, a purchase-hour window within one hour of the current local hour, at least two regrets and a regret rate of at least two-thirds. The base shield is the median regretted amount. With enough joined cash-flow observations, a sufficiently lower current balance can increase it by 25%, capped by available funds.
+
+The bar explains the suggestion; it does not move money. A cooldown requires the user's approved transaction or an eligible funded allowance. The rules are inspectable in [financial-insights.ts](./src/lib/financial-insights.ts). Category and intensity are retained as context; the current pattern count does not train a category-specific model or weight ratings by intensity.
+
+## Onboarding and the real application flow
+
+1. Open the [workspace](https://solvencyloop.netlify.app/app) and connect a Sui Mainnet wallet.
+2. Create or reuse a genuine owned MemWal account, authorize the app delegate with visible account-wide consent, and register the linked public profile. These on-chain changes need wallet approval and SUI gas.
+3. Choose Quiet Memory or individual memory approvals. Optional Autopilot setup is a separate funded policy with its own consent.
+4. Wait for account checks, personal memories, social context and payment-evidence verification. A live timeline shows actual stages and counts. Sign-in uses smaller authenticated requests and bounded evidence pages, and the dashboard opens only after the complete result validates.
+5. Describe a task in chat or use a manual screen. Gemini returns a constrained JSON intent; application code resolves contacts, validates values and computes exact micro-USDC allocations. Review missing details and the proposed action.
+6. Approve the financial transaction in the wallet, or let an already funded and active Autopilot policy handle an eligible direct command within its limits. Only the receipt establishes the outcome.
+7. Commit useful outcomes or reflections to memory, then recall and verify them on future interactions.
+
+Autopilot is optional and requires compatible deployed contracts, a configured agent directory and a dedicated executor distinct from the owner. Its policy binds the profile, memory account, executor, payees, scopes, expiry, per-action cap, rolling daily limit and available native-USDC balance. Incoming-share automation also requires that debtor's own current funded consent and configured event delivery. Owner revocation and withdrawals remain available independently of routine work and memory activity. [Autopilot guide](./AUTOPILOT_GUIDE.md).
+
+The `/` landing page is public and does not initialize wallet/chain requests. `/app` requires onboarding. Old `/?split=...` links redirect to `/app?split=...`. Presentation uses the current editorial identity, locally bundled Hanken Grotesk, glass surfaces and motion with reduced-motion/data-saver fallbacks. Animations never authorize or confirm financial work.
 
 ## Object factory structure
 
-One published Move package creates independent objects using shared application code. Users do not deploy individual packages.
+One published Move package creates independent objects. Users do not deploy an individual contract package to join.
 
-| Object | Ownership and purpose |
+| Object | Responsibility |
 | --- | --- |
-| `SolvencyRegistry` | Shared directory of wallet address → profile object ID, plus registered-user count. Only first registration writes it. |
-| `UserProfile` | One non-transferable, wallet-owned object containing the handle, MemWal account link, liquidity floor, contacts and registration timestamp. |
-| `MemWalAccount` | The user's existing account in the separate MemWal protocol. Ownership and the registered profile link are checked for every financial action. |
-| `GroupSplitEscrow<USDC>` | Independent shared object per bill, so its participants can fund and settle it. |
-| `CooldownVault<USDC>` | Independent owner-held object per deposit, with an enforced 24-hour unlock time. |
+| Shared `SolvencyRegistry` | Wallet → profile IDs and registered-user count. Only first registration writes it. |
+| Wallet-owned `UserProfile` | Public handle, immutable wallet identity, linked MemWal account, reserve, contacts and registration time. Only the `key` ability; no public transfer path. |
+| Protocol `MemWalAccount` | A shared MemWal object with a recorded owner and delegates. The app verifies genuine ownership and the profile link. |
+| Shared `GroupSplitEscrow<USDC>` | Independent bill state, participants, exact shares, funding and settlement. |
+| Owner-held `CooldownVault<USDC>` | A deposit with a contract-enforced unlock time. |
+| `AgentDirectory` and `AgentAllowanceVault<USDC>` | Discoverable, individually funded automation policies and on-chain receipts. |
 
-`register_user` is the profile factory: it verifies the genuine active MemWal account, rejects duplicate registration, creates the profile with optional initial contacts, records its ID in the directory and transfers it to the caller atomically. `update_profile`, contact edits and every financial function receive that owned profile directly; the global registry is not a transaction input for those operations. The profile has only the `key` ability, no public transfer function and an immutable wallet field. Only the factory can construct a profile.
+Profile/contact updates and financial functions take the owned profile directly, avoiding global registry writes for those operations. Registration still writes a shared directory, and participants still update shared bill objects. The design does not imply consensus-free payments or measured gas savings.
 
-The browser and memory API discover the ID through the directory, then verify the profile's exact type, address ownership, UID and recorded wallet. Lookup errors and legacy nested-profile entries block actions; only an explicit missing directory entry enables registration. Profile IDs are discovered per user and need no additional environment variables. On-chain profiles, contacts and financial records remain public.
+Every financial entry point checks the genuine linked MemWal account. Recovery operations can permit cancellation, eligible refunds or matured withdrawals after memory access is revoked, while still checking ownership and the actual linked account. Move is the authority for funds, escrow, reserve and cooldown invariants.
 
-This removes shared-registry writes from profile/contact edits. Registration still shares a directory write, and participants updating the same bill still share that bill's object. MemWal and bill transactions still involve shared objects; this is not a promise of consensus-free payments or measured gas savings.
+## Verification and demonstrated limits
 
-The current deployment uses this object layout. For a new deployment, publish the package using the steps below and configure its package/registry IDs together. An older package containing nested profiles is not compatible with these builders; upgrading an already deployed older layout would require a separate migration plan.
+The [verification report](./docs/VERIFICATION_REPORT.md) and [sanitized evidence](./docs/verification/regret-learning-evidence.json) record an owner-authorized Mainnet run on three wallets. It exercised actual application builders, authenticated APIs, Gemini, Tatum, MemWal and Move rather than a replacement mock payment implementation.
+
+| Historical result | Evidence boundary |
+| --- | --- |
+| 37 successful application transactions | 28 owner-wallet and nine executor transactions; dated receipts are in the report. |
+| Seven fully settled bills and 14 debtor shares | Included ordinary settlement, upfront funding/activation and six incoming-agent payments. |
+| Three funded allowances and three cooldown deposits | Actual policies and 24-hour vaults were checked; historical allowances may now be expired. |
+| Memory writes, recall, SDK analysis and restore | Completed for the three owned accounts; ordinary pending-question text was not saved as memory. |
+| Regret feedback used by Gemini | Saved ratings were recalled with blob provenance in a non-writing response. |
+
+**The live regret dataset did not trigger a shield or lower the spending quota.** It did not meet the qualifying sample/window rules. Controlled tests demonstrate the calculation changing when those conditions are met. Similarly, tiny verification payments did not establish adaptive repayment risk above the default 40-USDC threshold. Persistence, retrieval and deterministic rules are verified; improved consumer outcomes, model training and a predictive credit score are not claimed.
+
+The 10 November 2026 UI release also passed 136 TypeScript tests, typecheck, lint, production build and targeted desktop/mobile browser checks. Read-only Netlify checks loaded one owner-authorized wallet's 35 memories with zero rejected settlement proofs. Browser fixtures are isolated to tests and cannot sign or submit transactions. These dated checks are not an independent security audit or a blanket guarantee of hosted availability.
+
+Useful guides: [User flows](./USER_GUIDE.md) · [Agent architecture](./AGENT_GUIDE.md) · [Creator-to-counterparty lifecycle](./LIFECYCLE.md) · [Move deployment](./MOVE_DEPLOYMENT.md) · [Contract checks](./CONTRACT_VERIFICATION.md) · [Netlify deployment](./NETLIFY_DEPLOYMENT.md) · [Production readiness](./PRODUCTION_READINESS.md).
 
 ## Local setup
 
@@ -131,7 +336,7 @@ Keep this delegate stable across restarts. Rotating it later requires each user 
 
 Remove the obsolete `NEXT_PUBLIC_MEMWAL_ACCOUNT_ID` from existing environment files. It is no longer read. No per-user credentials or account IDs need to be added to `.env.local`. The same backend delegate can be approved by multiple account owners, but the backend still has account-wide access while approved. User-owned accounts provide ownership and revocation control; they do not make the backend unable to read authorized memories. Namespaces organize data inside an account and are not separate access boundaries. See [MemWal ownership and permissions](https://docs.wal.app/walrus-memory/contract/ownership-and-permissions).
 
-Contacts are entered by each user in Account and saved on chain. Bill participants can be chosen from those contacts or entered directly. Wallets must be distinct from each other and the creator. The previous named-contact environment defaults are no longer read. Mainnet USDC is fixed to:
+Contacts are entered by each user in Account and saved on chain. Select actual contacts when preparing a bill; the agent can request a missing contact's real wallet while preserving the pending split. Wallets must be distinct from each other and the creator. The previous named-contact environment defaults are no longer read. Mainnet USDC is fixed to:
 
 ```text
 0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC
@@ -166,12 +371,12 @@ npm.cmd start
 
 For browser regression checks, leave a local preview running and run `npm.cmd run test:ui` in another terminal. The suite uses the installed Google Chrome in headless mode and covers the landing interactions, mobile widths, legacy bill links, mandatory onboarding, drawer, Vanta cleanup/context loss and reduced motion. Isolated form checks use esbuild and Playwright interception with test-only fixtures, covering keyboard selection, stale-contact clearing, exact shares, disabled controls and account-wide consent. There is no public component-preview route. `PLAYWRIGHT_BASE_URL` optionally selects another local preview URL. It does not connect a wallet, sign or submit transactions.
 
-Use a single running dev/build/start process per checkout; stop the development server before rebuilding production output. Both dev and production servers bind to loopback locally. A hosted deployment should supply private environment variables through its host's secret settings, set APP_ORIGIN to its public HTTPS origin behind a reverse proxy, and rebuild after changing public configuration. The agent, memory, Smart Split, Autopilot event and Tatum proxy routes each declare a statically analyzable `maxDuration` of 300 seconds, compatible with Vercel Hobby when Fluid compute is enabled. See [Vercel's function duration limits](https://vercel.com/docs/functions/configuring-functions/duration). This duration includes streamed responses and post-response work. Long relayer or event-processing operations can still hit the host's time limit; use the existing receipt recovery and memory-only retry controls before attempting another financial action. Rebuild and redeploy after changing these route settings so the emitted function configuration is updated.
+Use a single running dev/build/start process per checkout; stop the development server before rebuilding production output. Both dev and production servers bind to loopback locally. A hosted deployment should supply private environment variables through its host's secret settings, set APP_ORIGIN to its public HTTPS origin behind a reverse proxy, and rebuild after changing public configuration. The API routes declare maxDuration = 300 in their Next.js configuration; the host still controls the actual invocation limit. Long relayer or event-processing work can exceed it. Use existing receipt recovery and memory-only retries before another financial action, and review the host-specific deployment guide.
 
-Local automated validation covers signature tampering/expiry/origin isolation, RPC routing, exact amounts, rule application, memory commit/error handling, and Move scenarios for funding, cancellation/refunds, unauthorized actions, payment validation, and cooldown/floor enforcement. Live wallet signatures, Mainnet contract execution, and real relayer writes require your post-deployment validation and are not claimed to have run locally.
+Automated validation covers signature tampering/expiry/origin isolation, RPC routing, exact amounts, rule application, memory commit/error handling, and Move scenarios for funding, cancellation/refunds, unauthorized actions, payment validation, and cooldown/floor enforcement. Standard checks do not submit live payments or fund an executor. Separate owner-authorized Mainnet runs are documented in the [verification report](./docs/VERIFICATION_REPORT.md); their historical results do not authorize repeating financial work against other wallets.
 
-For Netlify, see [NETLIFY_DEPLOYMENT.md](./NETLIFY_DEPLOYMENT.md). Sign-in recalls stream authenticated status/keepalive frames while loading, preventing an otherwise silent wait through relayer and chain reads. Streaming does not extend Netlify's total function limit, and the dashboard still waits for a complete validated learning result.
+For Netlify, see [NETLIFY_DEPLOYMENT.md](./NETLIFY_DEPLOYMENT.md). Sign-in uses sequential authenticated personal-memory, social-context and evidence requests, with at most five personal evidence candidates per page and an overall cap of 20. NDJSON status/keepalive frames support the live timeline; Quiet Memory approval shows activity inside its own card. Streaming does not extend a host's total function limit. The dashboard waits for all parts to validate; there is no successful empty-memory fallback.
 
 The original [LOCAL_VERIFICATION.md](./LOCAL_VERIFICATION.md) is a historical baseline of the unmodified repository, not the status of this implementation.
 
-References: [Next.js 15 App Router](https://nextjs.org/docs/15/app/getting-started/installation), [Tatum Sui gateway](https://tatum.io/chain/sui), [Sui package management](https://docs.sui.io/develop/manage-packages), [MemWal SDK](https://github.com/MystenLabs/MemWal).
+References: [Next.js 15 App Router](https://nextjs.org/docs/15/app/getting-started/installation), [Tatum Sui gateway](https://tatum.io/chain/sui), [Sui package management](https://docs.sui.io/develop/manage-packages), [MemWal SDK](https://docs.wal.app/walrus-memory/sdk/api-reference).

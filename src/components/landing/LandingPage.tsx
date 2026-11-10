@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import {
-  ArrowDown, ArrowRight, Brain, Check, CircleHelp, Clock3, Fingerprint, Infinity as Loop,
+  ArrowDown, ArrowRight, ArrowUpRight, Brain, Check, CircleHelp, Clock3, Fingerprint, Infinity as Loop,
   Layers3, LockKeyhole, MessageSquare, ReceiptText, ShieldCheck, Split, Wallet,
 } from 'lucide-react';
 import { LandingHero, LandingMotion, LandingReveal } from './LandingMotion';
@@ -69,6 +69,7 @@ export function LandingPage() {
             <a href="#overview">Overview</a>
             <a href="#features">Features</a>
             <a href="#architecture">Architecture</a>
+            <a className="landing-blog-link" href="https://anoopsinghwork.notion.site/SolvencyLoop-Building-a-Financial-Assistant-That-Remembers-What-Actually-Happened-41458f741fb5806bb9d4ff7cdc8ab980" target="_blank" rel="noopener noreferrer" aria-label="Read the technical blog (opens in a new tab)">Blog <ArrowUpRight size={14} aria-hidden="true" /></a>
           </nav>
           <Link href="/app" className="landing-button landing-button-small">Open app <ArrowRight size={15} aria-hidden="true" /></Link>
         </div>

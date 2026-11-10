@@ -9,6 +9,8 @@ test('landing explains each feature, exposes details and opens mandatory onboard
   await page.goto('/');
   const headline = page.getByRole('heading', { name: 'Smart money that remembers.' });
   await expect(headline).toBeVisible();
+  const article=page.locator('.landing-header').getByRole('link',{name:'Read the technical blog (opens in a new tab)'});
+  await expect(article).toHaveAttribute('href','https://anoopsinghwork.notion.site/SolvencyLoop-Building-a-Financial-Assistant-That-Remembers-What-Actually-Happened-41458f741fb5806bb9d4ff7cdc8ab980');await expect(article).toHaveAttribute('target','_blank');await expect(article).toHaveAttribute('rel','noopener noreferrer');
   await expect(headline).toHaveCSS('font-family', /Hanken Grotesk/);
   const shader = page.locator('.landing-hero-shader');
   await expect(shader).toHaveAttribute('data-ready', 'true');
@@ -53,6 +55,9 @@ test('mobile landing and workspace fit narrow screens', async ({ page }) => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
     if (route === '/') {
+      await expect(page.locator('.landing-header').getByRole('link',{name:'Read the technical blog (opens in a new tab)'})).toBeVisible();
+      await page.evaluate(()=>document.fonts.ready);
+      await page.setViewportSize({width:320,height:800});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);await expect(page.locator('.landing-header').getByRole('link',{name:'Read the technical blog (opens in a new tab)'})).toBeVisible();await page.setViewportSize({width:360,height:800});
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: 'test-results/mobile-landing.png', animations: 'disabled' });
       const chapters = page.getByRole('region', { name: 'SolvencyLoop feature chapters' });
@@ -120,6 +125,7 @@ test('landing remains readable and actionable without JavaScript', async ({ brow
   await page.goto(baseURL!);
   await expect(page.getByRole('heading', { name: 'Smart money that remembers.' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Launch web app', exact: true })).toHaveAttribute('href', '/app');
+  await expect(page.locator('.landing-header').getByRole('link',{name:'Read the technical blog (opens in a new tab)'})).toBeVisible();
   await page.getByText('Data and approvals', { exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByText('account-wide memory access', { exact: false })).toBeVisible();
