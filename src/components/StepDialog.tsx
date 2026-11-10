@@ -1,13 +1,15 @@
 "use client";
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, X } from 'lucide-react';
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useContext, useEffect, useId, useRef, type ReactNode } from 'react';
 import { usePresentationMotion } from '@/lib/use-presentation-motion';
 import {LoadingState} from './LoadingState';
+import {WorkspaceActivity,WorkspaceActivityContext} from './WorkspaceActivity';
 import {useModalScrollLock} from '@/lib/use-modal-scroll-lock';
 
 interface Props { open:boolean; title:string; question:string; stepKey:string; children:ReactNode; onClose:()=>void; onNext:()=>void; onBack?:()=>void; nextLabel?:string; canNext?:boolean; busy?:boolean; error?:string; hint?:string; stages?:string[]; stage?:string; className?:string; }
 export function StepDialog(p:Props) {
+  const activity=useContext(WorkspaceActivityContext);
   const dialog=useRef<HTMLDialogElement>(null),body=useRef<HTMLDivElement>(null),id=useId(),moving=usePresentationMotion();
   useModalScrollLock(p.open);
   useEffect(()=>{
@@ -33,9 +35,9 @@ export function StepDialog(p:Props) {
       <header className="flow-top"><span>{p.title}</span><button type="button" className="icon-button" aria-label={'Close '+p.title.toLowerCase()} disabled={p.busy} onClick={p.onClose}><X size={18}/></button></header>
       {p.stages&&<ol className="flow-stages" aria-label="Progress">{p.stages.map(label=><li key={label} aria-current={label===p.stage?'step':undefined}>{label}</li>)}</ol>}
       <div className="flow-scroll"><h2 id={id+'-question'}>{p.question}</h2>{p.hint&&<p id={id+'-hint'} className="flow-hint">{p.hint}</p>}
+        {p.busy&&(activity?<WorkspaceActivity compact events={activity} title="Working on your request"/>:<LoadingState compact title="Waiting for your request" description="Follow a wallet prompt if one appears. Please wait for the confirmed result."/>)}
         <AnimatePresence mode="wait" initial={false}><motion.div key={p.stepKey} ref={body} className="flow-content" initial={moving?{opacity:0,y:8}:false} animate={{opacity:1,y:0}} exit={moving?{opacity:0,y:-5}:undefined} transition={{duration:.16}}><fieldset disabled={p.busy}>{p.children}</fieldset></motion.div></AnimatePresence>
         {p.error&&<p className="flow-error" role="alert">{p.error}</p>}
-        {p.busy&&<LoadingState compact title="Waiting for your request" description="Follow a wallet prompt if one appears. Please wait for the confirmed result."/>}
       </div>
       <footer className="flow-footer">{p.onBack?<button type="button" className="button-secondary" disabled={p.busy} onClick={p.onBack}><ArrowLeft size={16} aria-hidden="true"/>Back</button>:<button type="button" className="button-secondary" disabled={p.busy} onClick={p.onClose}>Cancel</button>}<button type="submit" className="button primary-commit" data-action-tier="primary" disabled={p.canNext===false||p.busy}>{p.busy?'Please wait…':p.nextLabel||'Continue'}{!p.busy&&<ArrowRight size={16} aria-hidden="true"/>}</button></footer>
     </form>

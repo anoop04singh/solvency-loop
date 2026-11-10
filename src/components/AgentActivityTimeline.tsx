@@ -8,6 +8,8 @@ const steps:Record<AgentProgressStage,{title:string;data:string}>={
  request:{title:'Connecting to your agent',data:'Sending your signed message and recent chat context, authorized for your linked memory account.'},
  account:{title:'Checking your account',data:'Reading your Sui profile, contacts, USDC balance and linked MemWal access.'},
  memory:{title:'Recalling relevant memory',data:'Reading saved preferences, check-ins and shared context from your owned memory account.'},
+ personal_memory:{title:'Loading your memories',data:'Reading your saved preferences, check-ins and learned facts.'},
+ social_context:{title:'Loading shared context',data:'Reading current public preferences and verifying shared payment history.'},
  evidence:{title:'Verifying recalled evidence',data:'Checking recalled payment observations against actual Sui receipts.'},
  bills:{title:'Reading your bills',data:'Loading your Sui splits and, where needed, owned cooldown vaults.'},
  limits:{title:'Checking Autopilot limits',data:'Reading the current allowance. Funded actions still require the approved account, scope, limits and expiry.'},

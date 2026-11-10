@@ -3,6 +3,32 @@ import assert from 'node:assert/strict';
 import {requestMemory,AutopilotUncertainError} from '../src/lib/memory-api';
 import {AgentReplyError,GEMINI_MODEL} from '../src/lib/agent-types';
 import {agentProgressResponse} from '../src/lib/agent-progress-stream';
+import type {AgentProgress} from '../src/lib/agent-progress';
+
+test('sign-in reports observed phase counts and never reports ready before the last evidence page succeeds',async()=>{
+ const originalFetch=globalThis.fetch,descriptor=Object.getOwnPropertyDescriptor(globalThis,'window'),wallet='0x'+'1'.repeat(64);
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{origin:'https://workspace.example'}}});
+ try{for(const fail of [false,true]){
+  const events:AgentProgress[]=[];let release!:()=>void,arrived!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;}),waiting=new Promise<void>(resolve=>{arrived=resolve;});
+  globalThis.fetch=async(_input,init)=>{
+   const {payload:p}=JSON.parse(String(init?.body)),meta={readPhase:p.readPhase,memoryAccountId:wallet,tatumAnchor:{checkpoint:'123'}};
+   if(p.readPhase==='personal')return Response.json({...meta,memories:[{namespace:'test-only',blob_id:'test-fact',category:'habit_regret',text:'Fixture only'}]});
+   if(p.readPhase==='social')return Response.json({...meta,memories:[],verifiedSettlements:[],publicPreferences:[],groups:[]});
+   if(p.evidenceOffset===5){arrived();await gate;if(fail)return Response.json({error:'Evidence provider unavailable',noFinancialExecution:true},{status:502});}
+   return Response.json({...meta,verifiedSettlements:[{digest:'fixture-proof'}],rejectedEvidenceCount:0,evidenceSnapshot:'a'.repeat(64),nextEvidenceOffset:p.evidenceOffset===0?5:null});
+  };
+  const pending=requestMemory({action:'recall_all',walletAddress:wallet},async()=>({signature:'test-only'}),event=>events.push(event));
+  await waiting;
+  assert.equal(events.find(e=>e.stage==='personal_memory'&&e.state==='complete')?.count,1);
+  assert.ok(events.some(e=>e.stage==='social_context'&&e.state==='complete'));
+  assert.equal(events.filter(e=>e.stage==='evidence').at(-1)?.count,1);
+  assert.ok(!events.some(e=>['evidence','response'].includes(e.stage)&&e.state==='complete'));
+  release();
+  if(fail){await assert.rejects(pending,/Evidence provider unavailable/);assert.ok(!events.some(e=>e.stage==='response'&&e.state==='complete'));}
+  else{await pending;assert.equal(events.find(e=>e.stage==='evidence'&&e.state==='complete')?.count,2);assert.equal(events.at(-1)?.stage,'response');assert.equal(events.at(-1)?.state,'complete');}
+ }}finally{globalThis.fetch=originalFetch;if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else Reflect.deleteProperty(globalThis,'window');}
+});
 
 test('sign-in negotiates streaming and rejects a heartbeat-only response instead of accepting empty learning',async()=>{
  const originalFetch=globalThis.fetch,descriptor=Object.getOwnPropertyDescriptor(globalThis,'window'),wallet='0x'+'1'.repeat(64);

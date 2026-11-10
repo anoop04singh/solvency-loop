@@ -18,6 +18,8 @@ The browser requests NDJSON for these reads and recall_learning. After authentic
 
 Only the final validated result completes sign-in. Disconnects, missing result frames, failed evidence checks and incomplete responses remain failures. There is no successful empty-memory fallback, no automatic financial retry, no new memory write and no change to account-wide consent or the one-hour Quiet Memory grant.
 
+The workspace displays these real stages as an expandable loading timeline: authorization, account checks, personal memory, shared context, evidence verification and final result validation. Counts come from completed reads; elapsed time measures the current wait and is not a completion estimate. A failed phase pauses the timeline and leaves the dashboard closed. The same activity display appears during account refreshes and inside step dialogs for observed wallet, confirmation and refresh work. Motion stops for reduced-motion preferences, hidden tabs and data saver.
+
 An observed pre-fix recall on 10 November 2026 returned HTTP 504 with an HTML **Inactivity Timeout** after about 33 seconds. Separate signed requests succeeded in approximately 28–31 seconds, making the failure intermittent. The buffered JSON response sent no data until all work completed.
 
 The client also recognizes hosting timeout JSON and HTML, displays the HTTP status and an available Netlify request reference, and avoids exposing platform stacks. An interrupted autonomous command still requires checking its original on-chain receipt.

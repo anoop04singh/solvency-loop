@@ -13,19 +13,35 @@ import {readAgentProgressResponse} from './agent-progress-stream';
 import type {AgentStreamError} from './agent-progress-stream';
 export interface MemoryResponse { readPhase?:MemoryReadPhase;memoryAccountId?:string;nextEvidenceOffset?:number|null;evidenceSnapshot?:string;groups?:GroupConvention[];execution?:AgentExecution;agentMemorySaved?:boolean;publicPreferences?:PublicSocialPreference[]; status?: string; count?: number; scanned?:number; draft?:BillDraft; agent?:AgentTurn; memories?: RecalledMemory[]; learnedMemories?:RecalledMemory[]; createdMemories?:RecalledMemory[]; verifiedSettlements?:VerifiedSettlement[]; rejectedEvidenceCount?:number; evidenceLimitReached?:boolean; purchaseId?:string; tatumAnchor?: { checkpoint: string; usdcBalance?:number }; result?: { truncated?: boolean }; nextCursor?: SettlementCursor | null; }
 export class AutopilotUncertainError extends Error {constructor(public requestId:string){super('The agent response was interrupted. Check its on-chain receipt before another financial action.');}}
-async function recallPersonalLearning(payload:MemoryPayload,sign:(input:{message:Uint8Array})=>Promise<{signature:string}>):Promise<MemoryResponse>{
-  const personal=await requestMemory({...payload,readPhase:'personal'},sign);
+async function recallPersonalLearning(payload:MemoryPayload,sign:(input:{message:Uint8Array})=>Promise<{signature:string}>,progress?:AgentProgressObserver):Promise<MemoryResponse>{
+  const phaseProgress=(phase:MemoryReadPhase):AgentProgressObserver=>event=>{
+    if(event.stage==='response')return;
+    if(event.stage==='memory'){
+      if(phase!=='evidence')notifyAgentProgress(progress,phase==='personal'?'personal_memory':'social_context',event.state,{count:event.count});
+    }else if(event.stage!=='evidence'){
+      try{progress?.(event);}catch{/* Presentation must not interrupt sign-in. */}
+    }
+  };
+  const personal=await requestMemory({...payload,readPhase:'personal'},sign,phaseProgress('personal'));
+  notifyAgentProgress(progress,'personal_memory','complete',{count:personal.memories!.length});
   const accountId=personal.memoryAccountId;
   const sameAccount=(part:MemoryResponse)=>{if(part.memoryAccountId!==accountId)throw Error('Your memory account changed while loading. Authorize sign-in again.');};
-  const social=await requestMemory({...payload,readPhase:'social'},sign);sameAccount(social);
+  notifyAgentProgress(progress,'social_context','active');
+  const social=await requestMemory({...payload,readPhase:'social'},sign,phaseProgress('social'));sameAccount(social);
+  notifyAgentProgress(progress,'social_context','complete',{count:social.verifiedSettlements!.length});
   const verifiedSettlements:VerifiedSettlement[]=[];
   let rejectedEvidenceCount=0,evidenceLimitReached=false,offset=0,snapshot:string|undefined,anchor=personal.tatumAnchor;
   for(let page=0;page<4;page++){
-    const evidence=await requestMemory({...payload,readPhase:'evidence',evidenceOffset:offset,...(snapshot?{evidenceSnapshot:snapshot}:{})},sign);
+    notifyAgentProgress(progress,'evidence','active',{count:verifiedSettlements.length});
+    const evidence=await requestMemory({...payload,readPhase:'evidence',evidenceOffset:offset,...(snapshot?{evidenceSnapshot:snapshot}:{})},sign,phaseProgress('evidence'));
     sameAccount(evidence);verifiedSettlements.push(...evidence.verifiedSettlements!);
     rejectedEvidenceCount+=evidence.rejectedEvidenceCount!;evidenceLimitReached ||= evidence.evidenceLimitReached===true;anchor=evidence.tatumAnchor;
     if(evidence.nextEvidenceOffset===null){
-      return {memories:[...new Map([...personal.memories!,...social.memories!].map(m=>[m.namespace+':'+m.blob_id,m])).values()],verifiedSettlements:[...verifiedSettlements,...social.verifiedSettlements!],rejectedEvidenceCount,evidenceLimitReached,publicPreferences:social.publicPreferences,groups:social.groups,tatumAnchor:anchor};
+      notifyAgentProgress(progress,'evidence','complete',{count:verifiedSettlements.length});
+      notifyAgentProgress(progress,'response','active');
+      const result={memories:[...new Map([...personal.memories!,...social.memories!].map(m=>[m.namespace+':'+m.blob_id,m])).values()],verifiedSettlements:[...verifiedSettlements,...social.verifiedSettlements!],rejectedEvidenceCount,evidenceLimitReached,publicPreferences:social.publicPreferences,groups:social.groups,tatumAnchor:anchor};
+      notifyAgentProgress(progress,'response','complete');
+      return result;
     }
     if(evidence.nextEvidenceOffset!==offset+5||evidence.nextEvidenceOffset>15)throw Error('Evidence pagination did not advance. Personal insights were not marked ready.');
     offset=evidence.nextEvidenceOffset;snapshot=evidence.evidenceSnapshot;
@@ -55,8 +71,8 @@ async function readMemoryJsonResponse(response:Response,action:MemoryPayload['ac
 }
 export async function requestMemory(payload: MemoryPayload, sign: (input: { message: Uint8Array }) => Promise<{ signature: string }>,onProgress?:AgentProgressObserver): Promise<MemoryResponse> {
   if(payload.action==='agent_chat'||payload.action==='recall_all')validatePayload(payload);
-  if(payload.action==='recall_all'&&!payload.readPhase)return recallPersonalLearning(payload,sign);
-  const progress=payload.action==='agent_chat'?onProgress:undefined;
+  if(payload.action==='recall_all'&&!payload.readPhase)return recallPersonalLearning(payload,sign,onProgress);
+  const progress=onProgress;
   const stream=!!progress||['recall_all','recall_learning'].includes(payload.action);
   notifyAgentProgress(progress,'authorization','active');
   const authorization=await authorizeMemoryRequest(payload,sign);
@@ -81,6 +97,7 @@ export async function requestMemory(payload: MemoryPayload, sign: (input: { mess
     if(payload.readPhase==='personal'&&!Array.isArray(data.memories))throw Error('Personal memory is incomplete.');
     if(payload.readPhase==='social'&&(!Array.isArray(data.memories)||!Array.isArray(data.verifiedSettlements)||!Array.isArray(data.publicPreferences)||!Array.isArray(data.groups)))throw Error('Shared context is incomplete.');
     if(payload.readPhase==='evidence'&&(!Array.isArray(data.verifiedSettlements)||typeof data.rejectedEvidenceCount!=='number'||!Number.isInteger(data.rejectedEvidenceCount)||data.rejectedEvidenceCount<0||typeof data.evidenceSnapshot!=='string'||!/^[a-f0-9]{64}$/.test(data.evidenceSnapshot)||data.nextEvidenceOffset!==null&&(!Number.isInteger(data.nextEvidenceOffset)||typeof data.nextEvidenceOffset!=='number')))throw Error('Payment evidence is incomplete.');
+    notifyAgentProgress(progress,'response','complete');
     return data;
   }
   if(payload.action==='recall_learning'&&!Array.isArray(data.learnedMemories))throw new Error('The learned preference response is incomplete.');

@@ -1,4 +1,4 @@
-export const AGENT_PROGRESS_STAGES=['authorization','request','account','memory','evidence','bills','limits','reasoning','validation','memory_write','audit','execution','response','refresh'] as const;
+export const AGENT_PROGRESS_STAGES=['authorization','request','account','memory','personal_memory','social_context','evidence','bills','limits','reasoning','validation','memory_write','audit','execution','response','refresh'] as const;
 export type AgentProgressStage=typeof AGENT_PROGRESS_STAGES[number];
 export interface AgentProgress {stage:AgentProgressStage;state:'active'|'complete';at:number;count?:number;checkpoint?:string;}
 export type AgentProgressObserver=(event:AgentProgress)=>void;
