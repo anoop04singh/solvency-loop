@@ -11,6 +11,18 @@ async function open(page:Page,request:APIRequestContext){
 }
 async function view(page:Page,name:string){await page.getByRole('button',{name,exact:true}).click();}
 
+test('Quiet Memory approval keeps activity inside the sign-in card and restores actions after cancellation',async({page,request})=>{
+ await open(page,request);await view(page,'Quiet sign-in');await page.getByRole('button',{name:'Authorize this session',exact:true}).click();
+ const card=page.locator('.quiet-memory-sign-in'),activity=card.getByRole('region',{name:'Quiet Memory sign-in activity'});
+ await expect(activity).toBeVisible();await expect(activity.getByRole('status')).toHaveText('Authorizing access');await expect(card).toContainText('Payments have separate wallet approvals');
+ await expect(card.getByRole('button',{name:'Authorize this session',exact:true})).toHaveCount(0);await expect(page.getByRole('region',{name:'Getting your account ready'})).toHaveCount(0);await expect(page.locator('.workspace-activity')).toHaveCount(0);
+ const cardBox=await card.boundingBox(),activityBox=await activity.boundingBox();expect(activityBox!.y).toBeGreaterThan(cardBox!.y);expect(activityBox!.y+activityBox!.height).toBeLessThan(cardBox!.y+cardBox!.height);expect(activityBox!.height).toBeLessThan(150);
+ await page.screenshot({path:'test-results/quiet-memory-approval-desktop.png',fullPage:true,animations:'disabled'});
+ await page.setViewportSize({width:360,height:800});await page.emulateMedia({reducedMotion:'reduce'});await expect(activity).toHaveAttribute('data-motion','false');await expect(activity.locator('.workspace-activity-inline-icon>svg')).toHaveCSS('animation-name','none');expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+ await page.screenshot({path:'test-results/quiet-memory-approval-mobile.png',fullPage:true,animations:'disabled'});await page.evaluate(()=>window.__finishQuietApproval?.(false));
+ await expect(activity).toHaveCount(0);await expect(card.getByRole('button',{name:'Authorize this session',exact:true})).toBeEnabled();await expect(card.getByRole('button',{name:'Use individual approvals',exact:true})).toBeEnabled();
+});
+
 test('Quiet Memory sign-in stays focused and owner recovery is available inside the proof drawer',async({page,request})=>{
  await open(page,request);await view(page,'Quiet sign-in');
  await expect(page.getByRole('heading',{name:'Sign in with Quiet Memory',exact:true})).toBeVisible();

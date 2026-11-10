@@ -31,7 +31,7 @@ function fact(event:AgentProgress){
  return event.count+' '+noun+(event.state==='active'?' checked so far':' checked');
 }
 /** Display observed work only. Timers measure elapsed time, never predict completion. */
-export function WorkspaceActivity({events,title='Working on your request',description='Follow the live steps below. Open a step to see what it uses.',signIn=false,compact=false,failed=false,children}:{events:AgentProgress[];title?:string;description?:string;signIn?:boolean;compact?:boolean;failed?:boolean;children?:ReactNode}){
+export function WorkspaceActivity({events,title='Working on your request',description='Follow the live steps below. Open a step to see what it uses.',signIn=false,compact=false,inline=false,failed=false,children}:{events:AgentProgress[];title?:string;description?:string;signIn?:boolean;compact?:boolean;inline?:boolean;failed?:boolean;children?:ReactNode}){
  const preference=usePresentationMotion(),[visible,setVisible]=useState(false),[elapsed,setElapsed]=useState(0);
  useEffect(()=>{
   if(failed)return;
@@ -50,6 +50,10 @@ export function WorkspaceActivity({events,title='Working on your request',descri
  const stageCopy=(stage:AgentProgressStage)=>stage==='authorization'&&walletTransaction?{title:'Approve in your wallet',detail:'Review the transaction in your wallet. Submission still needs a confirmed Sui receipt before the app reports success.'}:copy[stage];
  const last=events.at(-1),current=active?stageCopy(active.stage).title:last?'Finishing this request':'Starting your request';
  const summary=failed?'Loading paused':current;
+ if(inline)return <section className="workspace-activity-inline" data-motion={moving} aria-label={title}>
+  <div className="workspace-activity-inline-row"><span className="workspace-activity-inline-icon" aria-hidden="true">{failed?<Pause size={22}/>:<LoaderCircle size={22}/>}</span><div><p className="workspace-activity-inline-title" role="status" aria-live="polite">{summary}</p><p className="workspace-activity-inline-description">{active?.stage==='authorization'?'Approve the message in your wallet to continue.':active?stageCopy(active.stage).detail:description}</p></div><span className="workspace-activity-time" aria-hidden="true"><Clock3 size={13}/>{elapsed?elapsed+'s elapsed':'Just started'}</span></div>
+  {elapsed>=20&&!failed&&<p className="workspace-activity-inline-note">Still waiting for this step. Keep this tab open and check your wallet if approval is needed.</p>}
+ </section>;
  return <section className={'workspace-activity'+(compact?' workspace-activity-compact':'')} data-motion={moving} data-failed={failed} aria-label={title} aria-busy={!failed}>
   <header className="workspace-activity-heading"><div><p className="eyebrow">{signIn?'Your personal workspace':'Live activity'}</p><h2>{title}</h2></div><span className="workspace-activity-time" aria-hidden="true"><Clock3 size={13}/>{elapsed?elapsed+'s elapsed':'Just started'}</span></header>
   <div className="workspace-activity-body"><div className="workspace-activity-overview">
