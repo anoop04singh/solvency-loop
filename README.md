@@ -4,6 +4,8 @@ A Next.js 15 App Router application with a Gemini-led financial workspace, Sui M
 
 Read the [technical blog](./docs/SOLVENCYLOOP_TECHNICAL_BLOG.md) for the architecture, Tatum API mapping, Walrus integration and payment/regret learning. The accompanying [verification report](./docs/VERIFICATION_REPORT.md) includes Mainnet receipts, asset reconciliation and the measured limits of the current learning dataset.
 
+The [brand asset kit](./public/brand/README.md) contains the current workspace infinity logo, light/dark wordmarks, Hanken Grotesk typography assets and favicon exports. Blog artwork follows the same workspace identity.
+
 The latest extension adds opt-in quiet memory, a funded and revocable USDC agent allowance, event-driven incoming-share handling, confirmed-receipt learning, public self-published preferences and unanimously approved group conventions. **Existing installations need a compatible package upgrade and a new shared agent directory before funded automation can be enabled.** Follow [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md) for the exact Sui CLI upgrade, new environment variables, consent boundaries and event-delivery setup. Original core package/registry IDs stay unchanged; the new extension is disabled by default. Manual screens remain available.
 
 **Current state:** the object-factory contract is published on Sui Mainnet (see `move/solvency_loop/Published.toml`). The application provides wallet-owned onboarding, personal contacts, real USDC expenses, payment history, cooldown savings and user-authored memory. No sample contacts, preset bills or memory-seeding action are enabled. See `PRODUCTION_READINESS.md` for verification evidence and remaining wallet-approved checks.

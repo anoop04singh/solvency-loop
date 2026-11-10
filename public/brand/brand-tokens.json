@@ -1,0 +1,47 @@
+{
+  "source": "src/app/app/agent.css and product.css",
+  "identity": "Swiss editorial LLM workspace",
+  "colors": {
+    "paper": "#fcf9f8",
+    "ink": "#1c1b1b",
+    "muted": "#3d4a42",
+    "green": "#006948",
+    "blue": "#0051d5",
+    "line": "#e5e2e1",
+    "stone": "#ebe7e7",
+    "soft": "#f6f3f2",
+    "amber": "#b15f00",
+    "white": "#ffffff",
+    "sky": "#dbe1ff",
+    "mint": "#e3eee8",
+    "sand": "#fff0df"
+  },
+  "mark": {
+    "viewBox": "0 0 28 28",
+    "cornerRadius": 2,
+    "icon": "Lucide Infinity",
+    "iconSize": 22,
+    "strokeWidth": 2
+  },
+  "typography": {
+    "family": "Hanken Grotesk",
+    "file": "../fonts/HankenGrotesk.ttf",
+    "license": "../fonts/HankenGrotesk-OFL.txt",
+    "wordmark": {
+      "case": "uppercase",
+      "weight": 500,
+      "letterSpacing": "-0.04em"
+    },
+    "display": {
+      "weight": 600,
+      "letterSpacing": "-0.04em"
+    },
+    "body": {
+      "weight": 400
+    },
+    "labels": {
+      "weight": 600,
+      "letterSpacing": "0.08em"
+    }
+  }
+}

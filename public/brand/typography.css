@@ -1,0 +1,6 @@
+/* Current workspace typography; optional stylesheet for external brand use. */
+@font-face{font-family:"Hanken Grotesk";src:url("../fonts/HankenGrotesk.ttf") format("truetype");font-style:normal;font-weight:100 900;font-display:swap}
+:root{--sl-font-family:"Hanken Grotesk",Arial,sans-serif;--sl-display-tracking:-.04em;--sl-label-tracking:.08em}
+.sl-brand-display{font-family:var(--sl-font-family);font-weight:600;letter-spacing:var(--sl-display-tracking)}
+.sl-brand-body{font-family:var(--sl-font-family);font-weight:400}
+.sl-brand-label{font-family:var(--sl-font-family);font-weight:600;letter-spacing:var(--sl-label-tracking);text-transform:uppercase}

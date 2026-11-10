@@ -2,41 +2,42 @@
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import sharp from 'sharp';
+import {brand as C,fontCSS,markBody,artworkRenderer} from './brand-artwork.mjs';
 
 const out=resolve('docs/assets/blog');
 const scratch=resolve('.live-verification/notion-artwork/frames');
 await mkdir(out,{recursive:true});
 await mkdir(scratch,{recursive:true});
 const evidence=JSON.parse(await readFile('docs/verification/regret-learning-evidence.json','utf8'));
-const C={paper:'#f2f8fe',ink:'#142e46',muted:'#405b73',blue:'#285f8d',sky:'#d9ebfa',green:'#2f6954',mint:'#e0efe7',amber:'#d9aa62',sand:'#faf0df',line:'#c6dcee',white:'#ffffff'};
+const renderer=await artworkRenderer();
 const esc=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-const rect=(x,y,w,h,fill=C.white,r=22,stroke='none')=>'<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+r+'" fill="'+fill+'" stroke="'+stroke+'"/>';
+const rect=(x,y,w,h,fill=C.white,r=8,stroke=C.line)=>'<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+r+'" fill="'+fill+'" stroke="'+stroke+'"/>';
 const text=(x,y,value,size=28,weight=400,fill=C.ink,extra='')=>'<text x="'+x+'" y="'+y+'" font-size="'+size+'" font-weight="'+weight+'" fill="'+fill+'" '+extra+'>'+esc(value)+'</text>';
 const lines=(x,y,values,size=26,fill=C.muted,gap=36)=>values.map((v,i)=>text(x,y+i*gap,v,size,400,fill)).join('');
-const path=(d,fill=C.blue,width=3,extra='')=>'<path d="'+d+'" fill="none" stroke="'+fill+'" stroke-width="'+width+'" stroke-linecap="round" stroke-linejoin="round" '+extra+'/>';
-const arrow=(d,color=C.blue)=>path(d,color,3,'marker-end="url(#arrow)"');
-const mark=(x,y,s=64)=>'<g transform="translate('+x+' '+y+') scale('+s/64+')">'+rect(0,0,64,64,C.blue,20)+path('M40 17C25 10 14 25 25 31L38 38C50 45 34 57 23 48','#f5fbff',7)+'</g>';
-const label=(x,y,value,fill=C.blue)=>text(x,y,value,22,700,fill,'letter-spacing="2"');
-const svg=(w,h,title,body)=>'<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'"><title>'+esc(title)+'</title><defs><linearGradient id="wash" x2="1" y2="1"><stop stop-color="#f2f8fe"/><stop offset=".6" stop-color="#e3f2fb"/><stop offset="1" stop-color="#e5f1eb"/></linearGradient><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="'+C.blue+'"/></marker></defs><style>text{font-family:"Segoe UI",Arial,sans-serif}</style>'+rect(0,0,w,h,'url(#wash)',0)+body+'</svg>';
+const path=(d,fill=C.ink,width=2,extra='')=>'<path d="'+d+'" fill="none" stroke="'+fill+'" stroke-width="'+width+'" stroke-linecap="round" stroke-linejoin="round" '+extra+'/>';
+const arrow=(d,color=C.muted)=>path(d,color,2,'marker-end="url(#arrow)"');
+const mark=(x,y,s=64)=>'<g transform="translate('+x+' '+y+') scale('+s/28+')">'+markBody+'</g>';
+const label=(x,y,value,fill=C.muted)=>text(x,y,value,22,600,fill,'letter-spacing="1.8"');
+const svg=(w,h,title,body)=>'<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'"><title>'+esc(title)+'</title><defs><radialGradient id="aura"><stop stop-color="#ddf1e7" stop-opacity=".7"/><stop offset="1" stop-color="#fcf9f8" stop-opacity="0"/></radialGradient><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="'+C.muted+'"/></marker></defs><style>'+fontCSS+'text{font-family:"Hanken Grotesk",Arial,sans-serif;font-variant-numeric:tabular-nums}</style>'+rect(0,0,w,h,C.paper,0,'none')+body+'</svg>';
 async function save(name,w,h,title,body){
  const source=svg(w,h,title,body);
  await writeFile(resolve(out,name+'.svg'),source);
- await sharp(Buffer.from(source)).png().toFile(resolve(out,name+'.png'));
+ await renderer.png(source,w,h,resolve(out,name+'.png'));
  return source;
 }
 const foot=(y,value)=>path('M60 '+(y-28)+'H1140',C.line,1)+text(60,y,value,21,400,C.muted);
 
 // Editorial cover. The brand mark is the application's actual icon.
-let b=mark(70,54,64)+text(156,99,'SOLVENCYLOOP',34,700);
-b+=label(72,225,'CONVERSATION  /  MEMORY  /  PROOF');
-b+=text(68,321,'A financial assistant',77,700)+text(68,411,'with a memory.',77,700);
-b+=lines(73,484,['Describe a bill. Review the plan.','Carry verified experience into the next decision.'],29);
-b+=rect(72,604,276,58,C.blue,29)+text(106,642,'SUI MAINNET · USDC',23,700,C.white);
-b+=rect(1000,184,495,140,C.white,28)+label(1032,228,'INTERPRET')+text(1032,280,'Gemini',39,700);
-b+=rect(1045,352,450,140,C.white,28)+label(1077,396,'REMEMBER',C.green)+text(1077,448,'Walrus Memory',39,700);
-b+=rect(1000,520,495,140,C.white,28)+label(1032,564,'ENFORCE')+text(1032,616,'Sui Move',39,700);
-b+=path('M984 255C920 255 920 592 984 592',C.blue,3)+text(990,715,'Runtime chain connectivity through Tatum',23,400,C.muted);
+try{
+let b='<ellipse cx="1130" cy="370" rx="650" ry="540" fill="url(#aura)"/>'+mark(70,54,54)+text(140,92,'SOLVENCYLOOP',36,500,C.ink,'letter-spacing="-1.44"');
+b+=path('M72 145H1528',C.line,1)+label(72,223,'THE FINANCIAL WORKSPACE');
+b+=text(68,332,'Intent. Memory.',88,600,C.ink,'letter-spacing="-3.5"')+text(68,426,'On-chain proof.',88,600,C.ink,'letter-spacing="-3.5"');
+b+=lines(73,502,['Describe a bill. Review the proposal.','Carry verified experience into the next decision.'],29);
+b+=rect(72,628,276,52,C.ink,26,C.ink)+text(106,663,'SUI MAINNET · USDC',23,600,C.white);
+b+=rect(1000,200,495,134,C.white)+label(1032,245,'01 / INTERPRET')+text(1032,295,'Gemini',39,600);
+b+=rect(1000,364,495,134,C.white)+label(1032,409,'02 / REMEMBER',C.green)+text(1032,459,'Walrus Memory',39,600);
+b+=rect(1000,528,495,134,C.white)+label(1032,573,'03 / ENFORCE')+text(1032,623,'Sui Move',39,600);
+b+=text(1000,720,'Runtime chain connectivity through Tatum',23,400,C.muted);
 await save('solvencyloop-cover',1600,780,'SolvencyLoop: conversation, memory and on-chain proof',b);
 
 // A readable overview complements the full, preserved Mermaid source in Notion.
@@ -56,8 +57,8 @@ b+=arrow('M970 606V697');
 b+=rect(60,720,1080,134,C.white)+text(90,766,'Owner review OR an eligible funded policy',31,700);
 b+=text(90,812,'Wallet signer / dedicated executor · audit before autonomous execution',25,400,C.muted);
 b+=arrow('M600 855V902');
-b+=rect(60,925,1080,122,C.blue)+text(90,972,'Shared Sui client → Tatum Mainnet /graphql',31,700,C.white);
-b+=text(90,1018,'Object reads · balances · events · simulation · signed submission',25,400,'#e5f1fb');
+b+=rect(60,925,1080,122,C.ink)+text(90,972,'Shared Sui client → Tatum Mainnet /graphql',31,600,C.white);
+b+=text(90,1018,'Object reads · balances · events · simulation · signed submission',25,400,'#e5e2e1');
 b+=arrow('M600 1048V1092');
 b+=rect(60,1115,1080,124,C.white)+text(90,1164,'Sui Move objects + confirmed events',31,700);
 b+=text(90,1209,'Asset authority and invariants → reverified receipt learning → Walrus',25,400,C.muted);
@@ -82,11 +83,11 @@ const cases=[{title:'No qualifying pattern',quota:70,shield:0},{title:'Three qua
 for(const [i,c]of cases.entries()){
  const y=364+i*126,x=624,w=484;
  b+=text(x,y,c.title,25,700);
- b+=rect(x,y+23,w*.2,30,'#879bad',4)+rect(x+w*.2,y+23,w*.1,30,C.amber,0);
- b+=rect(x+w*.3,y+23,w*c.shield/100,30,'#abcde4',0)+rect(x+w*(.3+c.shield/100),y+23,w*c.quota/100,30,C.green,4);
+ b+=rect(x,y+23,w*.2,30,'#9a9f9b',4,'none')+rect(x+w*.2,y+23,w*.1,30,C.amber,0,'none');
+ b+=rect(x+w*.3,y+23,w*c.shield/100,30,C.sky,0,'none')+rect(x+w*(.3+c.shield/100),y+23,w*c.quota/100,30,C.green,4,'none');
  b+=text(x,y+88,'Quota '+c.quota+' · shield '+c.shield+' USDC',23,400,C.muted);
 }
-const legend=[['#879bad','Reserve'],[C.amber,'Unpaid'],['#abcde4','Shield'],[C.green,'Quota']];
+const legend=[['#9a9f9b','Reserve'],[C.amber,'Unpaid'],[C.sky,'Shield'],[C.green,'Quota']];
 for(const [i,l]of legend.entries())b+=rect(70+i*283,860,18,18,l[0],4)+text(101+i*283,878,l[1],24);
 b+=lines(60,948,['A needs more regretted outcomes; B and C need more samples.','Controlled cases verify the formula, not improved consumer outcomes.'],24,C.muted,35);
 await save('regret-evidence',1200,1025,'Actual unchanged quotas compared with controlled positive regret-shield tests',b);
@@ -96,18 +97,18 @@ b=label(60,62,'04 / VERIFICATION SNAPSHOT')+text(60,126,'Real history. Reconcile
 const stats=[['37','confirmed transactions'],['7','fully settled bills'],['14','settled debtor shares']];
 for(const [i,s]of stats.entries()){
  const x=60+i*370;
- b+=rect(x,178,340,143,C.white)+text(x+26,246,s[0],50,700,C.blue)+text(x+26,291,s[1],23,400,C.muted);
+ b+=rect(x,178,340,143,C.white)+text(x+26,246,s[0],50,600,C.ink)+text(x+26,291,s[1],23,400,C.muted);
 }
 b+=text(60,386,'Walrus memories · original run → after check-ins',31,700);
 for(const [i,key]of ['A','B','C'].entries()){
  const before=[28,36,35][i],after=evidence.wallets[key].memoryCount,y=435+i*99,x=192,w=840/45;
- b+=text(60,y+22,'Wallet '+key,24,700)+rect(x,y,after*w,34,C.green,6)+rect(x,y,before*w,34,'#abcde4',6);
+ b+=text(60,y+22,'Wallet '+key,24,600)+rect(x,y,after*w,34,C.green,6,'none')+rect(x,y,before*w,34,C.sky,6,'none');
  b+=text(x+after*w+18,y+25,before+' → '+after,25,700);
 }
 b+=rect(60,755,1080,239,C.white)+text(87,806,'3.000000 USDC conserved across three locations',30,700);
 const bx=87,bw=1026,y=842;
-b+=rect(bx,y,bw*.91,40,C.blue,6)+rect(bx+bw*.91,y,bw*.08,40,C.green,0)+rect(bx+bw*.99,y,bw*.01,40,C.amber,3);
-b+=text(87,932,'Wallets  2.73',25,700,C.blue)+text(449,932,'Allowances  0.24',25,700,C.green)+text(820,932,'Cooldowns  0.03',25,700,'#86602c');
+b+=rect(bx,y,bw*.91,40,C.ink,6,'none')+rect(bx+bw*.91,y,bw*.08,40,C.green,0,'none')+rect(bx+bw*.99,y,bw*.01,40,C.amber,3,'none');
+b+=text(87,932,'Wallets  2.73',25,600,C.ink)+text(449,932,'Allowances  0.24',25,600,C.green)+text(820,932,'Cooldowns  0.03',25,600,C.amber);
 b+=foot(1050,'Dated test evidence · 10 November 2026 review · executor USDC unchanged');
 await save('verification-snapshot',1200,1090,'116 recalled memories and reconciliation of the original 3 USDC',b);
 
@@ -127,33 +128,34 @@ function loopFrame(active,phase=0){
  body+=arrow('M404 305H422')+arrow('M774 305H792')+arrow('M970 375V423')+arrow('M795 505H777')+arrow('M425 505H407')+arrow('M60 505H26V305H50');
  for(const [i,s]of steps.entries()){
   const [x,y]=pos[i],on=active===i;
-  body+=rect(x,y,340,140,on?C.blue:C.white,22);
-  body+=text(x+24,y+47,String(i+1).padStart(2,'0'),24,700,on?'#c9e2f5':C.blue);
+  body+=rect(x,y,340,140,on?C.ink:C.white,8);
+  body+=text(x+24,y+47,String(i+1).padStart(2,'0'),24,600,on?'#85f8c4':C.muted);
   body+=text(x+76,y+49,s.title,31,700,on?C.white:C.ink);
-  body+=text(x+76,y+98,s.body,25,400,on?'#e5f1fb':C.muted);
-  if(on)body+=rect(x+24,y+117,292*phase,4,'#9bd0e7',2);
+  body+=text(x+76,y+98,s.body,25,400,on?'#e5e2e1':C.muted);
+  if(on)body+=rect(x+24,y+117,292*phase,4,'#68dba9',2,'none');
  }
  body+=text(60,627,'Conceptual flow · no live progress or success is implied by this animation.',23,400,C.muted);
  body+=text(60,668,'Autopilot instead requires a funded owner policy and a committed action audit.',23,400,C.muted);
  return svg(1200,715,'A conceptual manual loop: recall, interpret, validate, approve, confirm and remember',body);
 }
 await writeFile(resolve(out,'learning-loop.svg'),loopFrame(-1));
-await sharp(Buffer.from(loopFrame(-1))).png().toFile(resolve(out,'learning-loop.png'));
+await renderer.png(loopFrame(-1),1200,715,resolve(out,'learning-loop.png'));
 const framePaths=[];
 for(let f=0;f<36;f++){
  const file=resolve(scratch,'frame-'+String(f).padStart(2,'0')+'.png');
- await sharp(Buffer.from(loopFrame(Math.floor(f/6),(f%6+1)/6))).png().toFile(file);framePaths.push(file);
+ await renderer.png(loopFrame(Math.floor(f/6),(f%6+1)/6),1200,715,file);framePaths.push(file);
 }
 const gif=spawnSync('magick',['-delay','18',...framePaths,'-loop','0','-layers','Optimize','-colors','128',resolve(out,'learning-loop.gif')],{encoding:'utf8',windowsHide:true});
 if(gif.status!==0)throw Error('GIF generation failed: '+gif.stderr);
 await writeFile(resolve(out,'README.md'),[
  '# Technical article visuals','',
- 'Original code-generated artwork for the Notion technical article. The cover uses the actual application icon. No screenshot or financial interaction is simulated as real application evidence.','',
+ 'Original code-generated artwork for the Notion technical article, using the current LLM workspace identity: warm paper, charcoal, emerald, Klein blue, Hanken Grotesk and the actual infinity header mark. Sources: src/app/app/agent.css and product.css. No screenshot or financial interaction is simulated as real application evidence.','',
  '- solvencyloop-cover: editorial cover and page branding.',
  '- architecture: overview; the full source diagram remains in the article.',
  '- learning-loop.gif: conceptual manual path. learning-loop.png is the static alternative.',
  '- regret-evidence: actual unchanged quotas and separately labeled controlled test scenarios.',
  '- verification-snapshot: dated memory counts and exact USDC reconciliation.','',
- 'Data source: ../../verification/regret-learning-evidence.json. Regenerate with node scripts/render-blog-visuals.mjs from the repository root; it uses the installed sharp package and ImageMagick. The frame scratch directory is ignored. No network calls, signatures or memory writes are made.',''
+ 'Data source: ../../verification/regret-learning-evidence.json. Regenerate with node scripts/render-blog-visuals.mjs from the repository root; it uses local Hanken Grotesk in headless Chrome and ImageMagick. The SVGs embed the font for portable lettering. Brand exports and font-license details live in public/brand/README.md. The frame scratch directory is ignored. No network calls, signatures or memory writes are made.',''
  ].join('\n'));
 console.log(JSON.stringify({output:out,assets:5,animatedFrames:36,financialCalls:0}));
+}finally{await renderer.close();}
