@@ -19,7 +19,7 @@ function excerpt(memory:RecalledMemory){
  const rating=memoryRecord(memory.text,'SOLVENCY_REGRET_V1');
  if(rating)return String(rating.merchant)+' · '+(rating.verdict==='worth_it'?'worth it':'regretted '+String(rating.intensity)+'/5')+'. Saved with the original purchase hour and live balance context.';
  const purchase=memoryRecord(memory.text,'SOLVENCY_PURCHASE_V1');
- if(purchase)return 'Tracked purchase: '+String(purchase.merchant)+'. Self-reported purchase details for a 48-hour check-in.';
+ if(purchase)return 'Tracked purchase: '+String(purchase.merchant)+'. Self-reported purchase details for a 6-hour check-in.';
  const settlement=memoryRecord(memory.text,'SOLVENCY_SETTLEMENT_V1');
  if(settlement)return 'On-chain settlement observation · transaction '+String(settlement.digest).slice(0,12)+'… · checkpoint #'+String(settlement.checkpoint)+'.';
  return memory.text.length>230?memory.text.slice(0,230)+'…':memory.text;

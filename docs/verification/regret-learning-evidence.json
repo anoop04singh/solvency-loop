@@ -1,0 +1,388 @@
+{
+  "asOf": "2026-11-10T04:59:25.073Z",
+  "scope": "Working-tree implementation; owner-authorized demonstration wallets. No new financial or memory writes in the learning audit.",
+  "implementationHashes": {
+    "src/lib/financial-insights.ts": "092444434ad7a5d139c812c624430b7eedcfd6e3f56118af71b1476292ee9a5f",
+    "src/lib/memory-service.ts": "c784573ac02c6b86fd7b3eb87c7c4ef483c7e2128b747c84a2874b56731a423c",
+    "src/lib/agent-service.ts": "6a00deb1885dddea7ffebfcec52b763757c330bc1daa00eb5bee549120c2b1bc",
+    "src/lib/expense.ts": "7686c16d0575058fde73ad3967c946f4cde9fba9c16b69edc2c7fa2b14073b7b",
+    "src/lib/tatum-compatibility.ts": "f883e767de31f04f10e7a259b557543f424b7c3059a743701cde4cdc1eeb3a83",
+    "src/lib/tatum-request.ts": "666d6ab936b17d1509186dc87a0895a6522f3b29e40c7299fc7a03a09d4a5d08",
+    "src/lib/walrus-tatum-memory.ts": "33184b551392d56f398032068c7c75550469112fe1b3a1a5fb16649b971990ac",
+    "scripts/verify-regret-learning.mjs": "a1a347b8b1b2352faf2bbaff093810ad5b2cda5dfd2f1a9da8b1ab4ecdc79aa3"
+  },
+  "originalRun": {
+    "status": "PASSED",
+    "at": "2026-11-09T20:16:15.280Z",
+    "bills": 7,
+    "confirmedTransactions": 37,
+    "settledShares": 14,
+    "agentTransactions": 9,
+    "transferredUsdc": "0.220000",
+    "totalHeldUsdc": "3.000000",
+    "initialUsdc": "3.000000",
+    "executorUsdcChanged": false
+  },
+  "regretFollowup": {
+    "status": "PASSED",
+    "policyHours": 6,
+    "checkins": 7,
+    "regretted": 3,
+    "worthIt": 4,
+    "newCommittedBlobs": 17,
+    "standalonePurchases": 0
+  },
+  "wallets": {
+    "A": {
+      "memoryCount": 35,
+      "ratingCount": 3,
+      "regretted": 1,
+      "quotaBefore": 0.85,
+      "quotaAfter": 0.85,
+      "currentSamples": 0,
+      "currentShield": 0,
+      "matchedHourReplay": {
+        "kind": "Offline controlled evaluation, not an observed future outcome",
+        "at": "2026-11-10T18:59:25.073Z",
+        "hour": 0,
+        "samples": 3,
+        "highRegret": false,
+        "shield": 0
+      },
+      "rejectedEvidenceCount": 0
+    },
+    "B": {
+      "memoryCount": 41,
+      "ratingCount": 2,
+      "regretted": 1,
+      "quotaBefore": 0.79,
+      "quotaAfter": 0.79,
+      "currentSamples": 0,
+      "currentShield": 0,
+      "matchedHourReplay": {
+        "kind": "Offline controlled evaluation, not an observed future outcome",
+        "at": "2026-11-10T18:59:25.073Z",
+        "hour": 0,
+        "samples": 2,
+        "highRegret": false,
+        "shield": 0
+      },
+      "rejectedEvidenceCount": 0
+    },
+    "C": {
+      "memoryCount": 40,
+      "ratingCount": 2,
+      "regretted": 1,
+      "quotaBefore": 0.79,
+      "quotaAfter": 0.79,
+      "currentSamples": 0,
+      "currentShield": 0,
+      "matchedHourReplay": {
+        "kind": "Offline controlled evaluation, not an observed future outcome",
+        "at": "2026-11-10T18:59:25.073Z",
+        "hour": 0,
+        "samples": 2,
+        "highRegret": false,
+        "shield": 0
+      },
+      "rejectedEvidenceCount": 0
+    }
+  },
+  "geminiProbe": {
+    "model": "gemini-3.5-flash-lite",
+    "owner": "A",
+    "allActualRegretFactsInContext": true,
+    "regretFactsInContext": 3,
+    "createdMemories": 0,
+    "executedTransactions": 0,
+    "inventoryUnchanged": true,
+    "assessment": "Reply correctly listed all three bill titles, verdicts and intensities, and identified randomized verification provenance. One observed example, not an accuracy benchmark."
+  },
+  "tests": {
+    "unitSuite": 127,
+    "targetedBrowserSuite": 4,
+    "targetedLearningSuite": 39,
+    "typecheck": "PASSED",
+    "lint": "PASSED",
+    "productionBuild": "PASSED at the six-hour release; unchanged production code in this documentation review"
+  },
+  "conclusion": {
+    "storedAndRecalled": true,
+    "ratings": 7,
+    "currentQuotaChanged": false,
+    "matchedHourShieldTriggered": false,
+    "reason": "A has one regretted of three; B/C have two samples each. No wallet satisfies all current pattern thresholds. Current local hour is also outside the purchase-hour window.",
+    "modelWeightTraining": false,
+    "clinicalOrFinancialOutcomeBenefitMeasured": false
+  },
+  "applicationReceipts": [
+    {
+      "digest": "37D9MqATxNXrD7CbRFG6BoRRk3prL62FLQ3UdJub7kpu",
+      "checkpoint": "343455127",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "Create owned MemWal account"
+    },
+    {
+      "digest": "9Vd5VCXYodVavN7oYJuGQKcyeVZFWh7qqp1vSX5HaUkK",
+      "checkpoint": "343455168",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "Authorize configured MemWal delegate"
+    },
+    {
+      "digest": "AT4asqu5LFzRZNufgqLPj3fsqHiw1pxSLDNPnfLpUHVG",
+      "checkpoint": "343455202",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "Register profile / save actual verification-wallet contacts"
+    },
+    {
+      "digest": "8cnRyY3qNPYxWAa25thG9aeJrBfvPgAG2NozMa4z14SA",
+      "checkpoint": "343455533",
+      "signer": "Wallet B",
+      "owner": "B",
+      "operation": "Create owned MemWal account"
+    },
+    {
+      "digest": "Gz8KW5LkhnvHEwnNHuAP9jxkGciPxAMy2LHAQPMAbNec",
+      "checkpoint": "343455576",
+      "signer": "Wallet B",
+      "owner": "B",
+      "operation": "Authorize configured MemWal delegate"
+    },
+    {
+      "digest": "9ZhoRPymT3PrBYAc5CT4tvdwCEG3rkrN71j3bBaKFuJd",
+      "checkpoint": "343455616",
+      "signer": "Wallet B",
+      "owner": "B",
+      "operation": "Register profile / save actual verification-wallet contacts"
+    },
+    {
+      "digest": "6vToaBuve8fzqht5xBejU5YQTsXuL4rDyfxv6dS1fLu9",
+      "checkpoint": "343455967",
+      "signer": "Wallet C",
+      "owner": "C",
+      "operation": "Create owned MemWal account"
+    },
+    {
+      "digest": "DyJysf4xEQ66pycxTNDRvgQMUbswWNF3HjwUAnmiR2Tz",
+      "checkpoint": "343456008",
+      "signer": "Wallet C",
+      "owner": "C",
+      "operation": "Authorize configured MemWal delegate"
+    },
+    {
+      "digest": "CggVLtDsXWMKBGCgXZuM9Nar8HUdjqmTeRXTZ92XY1PG",
+      "checkpoint": "343456042",
+      "signer": "Wallet C",
+      "owner": "C",
+      "operation": "Register profile / save actual verification-wallet contacts"
+    },
+    {
+      "digest": "oV4Q8korSLQjizyDA8nRUVEpSSVA8H5QCqkBTSpCeip",
+      "checkpoint": "343456446",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "Approve Gemini-prepared split after bounded review"
+    },
+    {
+      "digest": "DGPZrHFrfxhq7YjbKEN2EA8eYMVV5vTWzUNGAUfezCzG",
+      "checkpoint": "343458787",
+      "signer": "Wallet B",
+      "owner": "B",
+      "operation": "Pay real split share"
+    },
+    {
+      "digest": "7RzSuX1LeKMt9J7PVuA3Z8jUyP1Jx3zT7GBDUtCepVFa",
+      "checkpoint": "343459035",
+      "signer": "Wallet C",
+      "owner": "C",
+      "operation": "Pay real split share"
+    },
+    {
+      "digest": "7HgmbNjNAyabfZPNxF1W3yJJ7vyHqHuPWuNuHGcPAvgb",
+      "checkpoint": "343459423",
+      "signer": "Wallet B",
+      "owner": "B",
+      "operation": "Approve Gemini-prepared split after bounded review"
+    },
+    {
+      "digest": "3Fu34Be6TaDndBDW9ZoXn3R1Vw2xoGpjDBneASyi7Yis",
+      "checkpoint": "343459458",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "Pay real split share"
+    },
+    {
+      "digest": "6qKZstarGeSLE6bVSGdKQDPUQM96bHTu2WQMhVcF6vRa",
+      "checkpoint": "343459707",
+      "signer": "Wallet C",
+      "owner": "C",
+      "operation": "Pay real split share"
+    },
+    {
+      "digest": "F4irh6WqH4xfobnfXnZi6Bicfn7a9rodWbGs64xFLrys",
+      "checkpoint": "343460144",
+      "signer": "Wallet C",
+      "owner": "C",
+      "operation": "Approve Gemini-prepared split after bounded review"
+    },
+    {
+      "digest": "4cEPHz8Znu229t3dhW377ubTW4toZoJWA2UbA4sjvCbi",
+      "checkpoint": "343460184",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "Pay real split share"
+    },
+    {
+      "digest": "DCo3FCYepupJ4AFs7WipV5D4oBPk9cFhr2LN7gMwNpnK",
+      "checkpoint": "343460428",
+      "signer": "Wallet B",
+      "owner": "B",
+      "operation": "Pay real split share"
+    },
+    {
+      "digest": "91L5VrMVsVg7D4GgcjzozkG8iDd9LNxx8j6xFRWVQFeD",
+      "checkpoint": "343460968",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "Approve Gemini-prepared split after bounded review"
+    },
+    {
+      "digest": "CiDyLpECo2H3Nm87v4pGaZbqDiLEdqm16tVwFBtsp3o",
+      "checkpoint": "343461002",
+      "signer": "Wallet B",
+      "owner": "B",
+      "operation": "Fund real upfront share"
+    },
+    {
+      "digest": "5hVwS5vzfbqDjzszjC2LA6RwRZUa2qvkdZDPWnneHbJV",
+      "checkpoint": "343461035",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "activate_group_split"
+    },
+    {
+      "digest": "HLd1hoNcESEKnFr8KCyy4qLjDk2ngKzCsFRUSJA2hA3y",
+      "checkpoint": "343461289",
+      "signer": "Wallet C",
+      "owner": "C",
+      "operation": "Pay real split share"
+    },
+    {
+      "digest": "715ZjEp9CPgzdQhLX3SAjmsQ88oharQgQshcYbcQQrwP",
+      "checkpoint": "343461618",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "Fund 0.10 USDC bounded Autopilot allowance"
+    },
+    {
+      "digest": "2h2UE2vPrX6Q18Tdrg4JXr6wPCR23AzZTKVToaopV6Fj",
+      "checkpoint": "343461866",
+      "signer": "Wallet A",
+      "owner": "A",
+      "operation": "Approve Gemini-prepared 24-hour cooldown"
+    },
+    {
+      "digest": "FdVP62WVtbMrVyNhPRwmQuUFQnh7k6mtK2TnAcCUk8H9",
+      "checkpoint": "343462038",
+      "signer": "Wallet B",
+      "owner": "B",
+      "operation": "Fund 0.10 USDC bounded Autopilot allowance"
+    },
+    {
+      "digest": "5vAaTgMc2fWr9EHt2R8c5jnCty1UBUaADSzKaq12MeSw",
+      "checkpoint": "343462286",
+      "signer": "Wallet B",
+      "owner": "B",
+      "operation": "Approve Gemini-prepared 24-hour cooldown"
+    },
+    {
+      "digest": "3E9FJtXpS19Sm99FcA26hhoBJTxayzxxdA43PhMmUAC9",
+      "checkpoint": "343462473",
+      "signer": "Wallet C",
+      "owner": "C",
+      "operation": "Fund 0.10 USDC bounded Autopilot allowance"
+    },
+    {
+      "digest": "FXaNGqhUWh4fVNyWBzsjMNqY4z8F541qEMxBpGoYsfSG",
+      "checkpoint": "343462694",
+      "signer": "Wallet C",
+      "owner": "C",
+      "operation": "Approve Gemini-prepared 24-hour cooldown"
+    },
+    {
+      "digest": "Ewyv7YqhyHTzYWQpgnRpNXQVLB9SvJoem3aXQSZrRPt1",
+      "checkpoint": "343463099",
+      "signer": "Dedicated executor",
+      "owner": "A",
+      "operation": "Create bill",
+      "amountUnits": "0"
+    },
+    {
+      "digest": "8VhGvXvo6fQRTCVHctKBK4MLbdvCo5hSLDcM9fYPJikE",
+      "checkpoint": "343469140",
+      "signer": "Dedicated executor",
+      "owner": "A",
+      "operation": "Settle incoming share",
+      "amountUnits": "10000"
+    },
+    {
+      "digest": "HHsnxNMDsCsBDtFCMvrVZjJzKX3pWeQdQX69MLwviPKF",
+      "checkpoint": "343471508",
+      "signer": "Dedicated executor",
+      "owner": "A",
+      "operation": "Settle incoming share",
+      "amountUnits": "10000"
+    },
+    {
+      "digest": "3Qx4qC4btouga26m8ArWeDcLPBVQReNjqt9Wt5kbG3dh",
+      "checkpoint": "343463490",
+      "signer": "Dedicated executor",
+      "owner": "B",
+      "operation": "Settle incoming share",
+      "amountUnits": "10000"
+    },
+    {
+      "digest": "B3H9gHWgGDYcU1FGZgqw3fWB21cP5DvZ8eLyAv4K7KpK",
+      "checkpoint": "343464130",
+      "signer": "Dedicated executor",
+      "owner": "C",
+      "operation": "Settle incoming share",
+      "amountUnits": "10000"
+    },
+    {
+      "digest": "CmBVsH5dLQr72WJCAenoqUspxdJ6uo8jTjDWJbmLUbmv",
+      "checkpoint": "343471526",
+      "signer": "Dedicated executor",
+      "owner": "B",
+      "operation": "Settle incoming share",
+      "amountUnits": "10000"
+    },
+    {
+      "digest": "8UZvbQCArjqV5gFA9ERYeyxt5wyccpawkzGLLNspB1M5",
+      "checkpoint": "343470313",
+      "signer": "Dedicated executor",
+      "owner": "C",
+      "operation": "Settle incoming share",
+      "amountUnits": "10000"
+    },
+    {
+      "digest": "FQxJdkj1w2ev9Q3hDAtTsGYohbLdEUGZecx7utt9iE5M",
+      "checkpoint": "343467678",
+      "signer": "Dedicated executor",
+      "owner": "B",
+      "operation": "Create bill",
+      "amountUnits": "0"
+    },
+    {
+      "digest": "Aawx2cisJBBXrtQoH7jfXW4XqxphwThDCRgPY3PQCCFF",
+      "checkpoint": "343470982",
+      "signer": "Dedicated executor",
+      "owner": "C",
+      "operation": "Create bill",
+      "amountUnits": "0"
+    }
+  ]
+}

@@ -14,7 +14,7 @@ const workflows = [
   ] },
   { title: 'Purchase reflection', description: 'Revisit a recorded purchase', icon: Brain, steps: [
     ['Record', 'Save a purchase you want to check in on.'],
-    ['Wait 48 hours', 'The check-in becomes available after the purchase ages.'],
+    ['Wait 6 hours', 'The check-in becomes available after the purchase ages.'],
     ['Reflect', 'Mark it Worth It or Regretted in your memory.'],
   ] },
   { title: 'Cooldown vault', description: 'Give spending some space', icon: Clock3, steps: [

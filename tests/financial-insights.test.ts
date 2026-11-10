@@ -47,7 +47,7 @@ test('unverified recalled settlement text alone cannot require a deposit',()=>{
  const claimed=memory('SOLVENCY_SETTLEMENT_V1',{subject:friend,recipient:wallet,lagMs:99*DAY_MS},'social_split_trust');
  assert.equal(computeExpense(wallet,[people[0]],'100','equal',[claimed],true).shares[0].requiresUpfrontEscrow,false);
 });
-test('48-hour structured purchase ratings are owner scoped and use the latest rating once',()=>{
+test('6-hour structured purchase ratings are owner scoped and use the latest rating once',()=>{
  const first=rating(1),newer={...first,verdict:'worth_it' as const,intensity:0,checkedAtMs:now-1000};
  const all=[memory('SOLVENCY_PURCHASE_V1',purchase(1)),memory('SOLVENCY_PURCHASE_V1',{...purchase(2),owner:other}),memory('SOLVENCY_REGRET_V1',first),memory('SOLVENCY_REGRET_V1',newer),memory('SOLVENCY_REGRET_V1',{...rating(3),checkedAtMs:purchase(3).purchasedAtMs+CHECKIN_DELAY_MS-1})];
  assert.equal(purchaseMemories(all,wallet).length,1);assert.deepEqual(regretMemories(all,wallet).map(r=>r.verdict),['worth_it']);

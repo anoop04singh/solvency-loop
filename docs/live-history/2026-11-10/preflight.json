@@ -1,0 +1,76 @@
+{
+  "startedAt": "2026-11-09T18:45:28.256Z",
+  "mode": "read-only; no signatures or mutations",
+  "wallets": [
+    {
+      "label": "A",
+      "address": "0x69f42224b7dde2da242c143eb7f7e33711de1701dc2b9114b7a4579041dadc07",
+      "profile": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "memoryAccount": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "autopilot": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "splits": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "cooldowns": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      }
+    },
+    {
+      "label": "B",
+      "address": "0xebfa029ef74994fa7d31526c52937c6cd3282ba950c6131377cd2850e102416a",
+      "profile": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "memoryAccount": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "autopilot": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "splits": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "cooldowns": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      }
+    },
+    {
+      "label": "C",
+      "address": "0x5492a05d11d4fb4ad2aa68be288e746b3123ca45a9ea077fceac9726553188ef",
+      "profile": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "memoryAccount": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "autopilot": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "splits": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      },
+      "cooldowns": {
+        "error": "Read failed; no successful empty fallback or mutation was used."
+      }
+    }
+  ],
+  "executor": {
+    "configured": true,
+    "address": "0xfb3deb0b47322c5e25857d6dec9efd81c6769d5298917bbf9b819c86bace7a17"
+  },
+  "autopilot": {
+    "packageId": "0x435c964a0fecb495d7fddf1302dba3ae6270509f69c4dc2dde504c8d3693ef17",
+    "origin": "0x435c964a0fecb495d7fddf1302dba3ae6270509f69c4dc2dde504c8d3693ef17",
+    "directoryId": "0xbb5d557e7cd847809cee32b41f327e3b9fa018feb667afdb6c747a11db69ee87",
+    "executor": "0xfb3deb0b47322c5e25857d6dec9efd81c6769d5298917bbf9b819c86bace7a17"
+  },
+  "executorBalances": {
+    "error": "Balance read failed."
+  }
+}

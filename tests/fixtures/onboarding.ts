@@ -10,6 +10,8 @@ export function installOnboardingFixture() {
   const env = { NEXT_PUBLIC_SOLVENCY_PACKAGE_ID: a(1), NEXT_PUBLIC_SOLVENCY_REGISTRY_ID: a(2), NEXT_PUBLIC_MEMWAL_PACKAGE_ID: a(6), NEXT_PUBLIC_MEMWAL_REGISTRY_ID: a(7), NEXT_PUBLIC_MEMWAL_AGENT_ID: '0x' + Buffer.from(key.getPublicKey().toRawBytes()).toString('hex') };
   const oldEnv = Object.fromEntries(Object.keys(env).map(k => [k, process.env[k]])); Object.assign(process.env, env);
   const backup = { getObject: tatumSuiClient.getObject, getDynamicFieldObject: tatumSuiClient.getDynamicFieldObject, getAllBalances: tatumSuiClient.getAllBalances, getLatestCheckpointSequenceNumber: tatumSuiClient.getLatestCheckpointSequenceNumber, getCoins: tatumSuiClient.getCoins };
+  const getBalance = tatumSuiClient.core.getBalance;
+  Object.assign(tatumSuiClient.core, { getBalance: async () => ({ balance: { coinType: SUI_MAINNET_USDC_TYPE, balance: '500000000', coinBalance: '500000000', addressBalance: '0' } }) });
   Object.assign(tatumSuiClient, {
     getAllBalances: async () => [{ coinType: SUI_MAINNET_USDC_TYPE, totalBalance: '500000000' }],
     getLatestCheckpointSequenceNumber: async () => '123',
@@ -23,5 +25,5 @@ export function installOnboardingFixture() {
     },
     getCoins: async ({ coinType }: { coinType: string }) => { if (coinType !== SUI_MAINNET_USDC_TYPE) throw new Error('Alternate coin requested'); state.coinReads++; return { data: [{ coinObjectId: a(10), balance: '500000000' }], hasNextPage: false }; },
   });
-  return { wallet, memoryId, profileId, state, restore() { Object.assign(tatumSuiClient, backup); for (const [k, v] of Object.entries(oldEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } } };
+  return { wallet, memoryId, profileId, state, restore() { Object.assign(tatumSuiClient, backup); Object.assign(tatumSuiClient.core, { getBalance }); for (const [k, v] of Object.entries(oldEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } } };
 }

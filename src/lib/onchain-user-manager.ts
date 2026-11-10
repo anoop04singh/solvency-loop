@@ -1,6 +1,6 @@
 import type { SuiObjectResponse } from '@mysten/sui/jsonRpc';
 import type { SettlementCursor } from './memory-protocol';
-import { Transaction } from '@mysten/sui/transactions';
+import { Transaction, type TransactionObjectArgument } from '@mysten/sui/transactions';
 import { normalizeStructTag } from '@mysten/sui/utils';
 import { tatumSuiClient } from './tatum-rpc-client';
 import { contractConfig, requireAddress, SUI_MAINNET_USDC_TYPE } from './config';
@@ -157,7 +157,8 @@ export async function buildCreateGroupSplitTx(p: { walletAddress: string; title:
   return tx;
 }
 export async function paymentCoins(owner: string, required: bigint, tx: Transaction) {
-  requireAddress(owner);
+  owner = requireAddress(owner);
+  if (tx.getData().sender !== owner) throw new Error('Payment funds must belong to the transaction sender.');
   const chosen: string[] = []; let total = 0n, cursor: string | null = null;
   do {
     const page = await tatumSuiClient.getCoins({ owner, coinType: SUI_MAINNET_USDC_TYPE, cursor, limit: TATUM_GRAPHQL_MAX_PAGE_SIZE });
@@ -166,10 +167,23 @@ export async function paymentCoins(owner: string, required: bigint, tx: Transact
     if (!page.nextCursor || page.nextCursor === cursor) throw new Error('Coin pagination did not advance.');
     cursor = page.nextCursor;
   } while (true);
-  if (total < required) throw new Error('Insufficient Circle USDC; the amount and any liquidity reserve must both be available.');
-  const primary = tx.object(chosen[0]);
+  let withdrawal: TransactionObjectArgument | undefined;
+  if (total < required) {
+    // Address balances have no Coin object. Redeem only the actual shortfall in
+    // this same sender-signed PTB; never treat the displayed total as a coin ID.
+    const { balance } = await tatumSuiClient.core.getBalance({ owner, coinType: SUI_MAINNET_USDC_TYPE });
+    if (!/^\d+$/.test(balance.addressBalance) || BigInt(balance.addressBalance) < required - total) throw new Error('Insufficient Circle USDC; the amount and any liquidity reserve must both be available.');
+    [withdrawal] = tx.moveCall({ target: '0x2::coin::redeem_funds', typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [tx.withdrawal({ amount: required - total, type: SUI_MAINNET_USDC_TYPE })] });
+  }
+  const primary = chosen.length ? tx.object(chosen[0]) : withdrawal!;
   for (let i = 1; i < chosen.length; i += 100) tx.mergeCoins(primary, chosen.slice(i, i + 100).map(id => tx.object(id)));
+  if (chosen.length && withdrawal) tx.mergeCoins(primary, [withdrawal]);
   return primary;
+}
+function consumePaymentRemainder(tx: Transaction, coin: TransactionObjectArgument) {
+  // A newly redeemed coin is exactly the requested payment/batch total. Its
+  // zero remainder must be consumed. Existing input coins keep their change.
+  if ('Result' in coin || 'NestedResult' in coin) tx.moveCall({ target: '0x2::coin::destroy_zero', typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [coin] });
 }
 export async function buildSettleSplitShareTx(p: { payerAddress: string; splitObjectId: string; amountUsdc: number; upfront?: boolean; }) {
   const { packageId } = contractConfig(), units = positiveUsdc(p.amountUsdc);
@@ -177,6 +191,7 @@ export async function buildSettleSplitShareTx(p: { payerAddress: string; splitOb
   const access = await transactionAccess(p.payerAddress);
   const coin = await paymentCoins(p.payerAddress, units, tx), [payment] = tx.splitCoins(coin, [tx.pure.u64(units)]);
   tx.moveCall({ target: packageId + '::core::' + (p.upfront ? 'fund_split_share' : 'settle_split_share'), typeArguments: [SUI_MAINNET_USDC_TYPE], arguments: [tx.object(access.profile.profileId), tx.object(access.accountId), tx.object(requireAddress(p.splitObjectId, 'Split ID')), payment, tx.object('0x6')] });
+  consumePaymentRemainder(tx, coin);
   return tx;
 }
 export const MAX_SETTLEMENT_BATCH=20;
@@ -195,6 +210,7 @@ export async function buildSettleSplitSharesTx(p:{payerAddress:string;splitObjec
     const [payment]=tx.splitCoins(coin,[tx.pure.u64(share.amount)]);
     tx.moveCall({target:access.packageId+'::core::settle_split_share',typeArguments:[SUI_MAINNET_USDC_TYPE],arguments:[tx.object(access.profile.profileId),tx.object(access.accountId),tx.object(share.id),payment,tx.object('0x6')]});
   }
+  consumePaymentRemainder(tx, coin);
   return tx;
 }
 export async function buildSplitActionTx(walletAddress: string, splitId: string, action: 'activate_group_split' | 'cancel_group_split' | 'refund_escrow') {

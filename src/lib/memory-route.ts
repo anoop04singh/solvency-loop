@@ -32,6 +32,10 @@ export async function handleMemoryRequest(req: NextRequest,requiredAction?:Memor
     const run=(observer?:AgentProgressObserver)=>deps.execute(envelope.payload,envelope.nonce,undefined,{
       issuedAt:envelope.issuedAt,
       progress:event=>{if(event.stage==='execution'&&event.state==='active')executionMayHaveStarted=true;observer?.(event);},
+      deliverConfirmed:digest=>deps.after(async()=>{
+        try{const {dispatchConfirmedBill}=await import('./autopilot-dispatch');await dispatchConfirmedBill(digest);}
+        catch{console.warn('Confirmed transaction retained; incoming automatic payments need event-delivery retry.');}
+      }),
       ...(grant&&envelope.payload.autoMemory?{background:{expiresAt:grant.expiresAt,schedule:(task:()=>Promise<void>)=>{tasks.push(task);}}}:{}),
     });
     if(envelope.payload.action==='agent_chat'&&req.headers.get('accept')?.includes('application/x-ndjson'))return agentProgressResponse(run,failure);

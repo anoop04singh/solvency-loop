@@ -41,12 +41,23 @@ test('purchase writes use the owned account, live balance checkpoint and actual 
  assert.equal(writes[0].key,'purchase:'+nonce);
  await assert.rejects(executeMemoryRequest({action:'record_purchase',walletAddress:owner,merchant:'Future',merchantCategory:'other',amountUsdc:'1',purchasedAtMs:Date.now()+DAY_MS,timeZone:'UTC'},nonce,deps),/not a future/);
 });
-test('server enforces 48 hours and cannot rate a foreign or missing purchase',async()=>{
+test('server enforces 6 hours and cannot rate a foreign or missing purchase',async()=>{
  const {deps,writes,setRecalled}=setup(),request:MemoryPayload={action:'regret_checkin',walletAddress:owner,purchaseId:nonce,verdict:'regretted',intensity:4};
  setRecalled([mem('SOLVENCY_PURCHASE_V1',{...purchase,purchasedAtMs:Date.now()-CHECKIN_DELAY_MS+60_000})]);
  await assert.rejects(executeMemoryRequest(request,nonce,deps),/not due/);assert.equal(writes.length,0);
  setRecalled([mem('SOLVENCY_PURCHASE_V1',{...purchase,owner:friend})]);
  await assert.rejects(executeMemoryRequest(request,nonce,deps),/could not be found/);assert.equal(writes.length,0);
+});
+
+test('a purchase is ineligible one millisecond before six hours and eligible at the exact boundary',async t=>{
+ const clock=Date.now();t.mock.method(Date,'now',()=>clock);
+ assert.equal(CHECKIN_DELAY_MS,6*60*60*1000);
+ const {deps,writes,setRecalled}=setup(),request:MemoryPayload={action:'regret_checkin',walletAddress:owner,purchaseId:nonce,verdict:'worth_it'};
+ setRecalled([mem('SOLVENCY_PURCHASE_V1',{...purchase,purchasedAtMs:clock-CHECKIN_DELAY_MS+1})]);
+ await assert.rejects(executeMemoryRequest(request,nonce,deps),/6-hour check-in is not due/);assert.equal(writes.length,0);
+ setRecalled([mem('SOLVENCY_PURCHASE_V1',{...purchase,purchasedAtMs:clock-CHECKIN_DELAY_MS})]);
+ const result=await executeMemoryRequest(request,nonce,deps);assert.equal(result.createdMemories?.length,2);
+ assert.match(writes[0].text,/6-hour purchase check-in/);
 });
 test('due ratings commit both namespaces with original purchase context and live liquidity',async()=>{
  const {deps,writes}=setup();
@@ -67,7 +78,7 @@ test('a creator rates a bill without a purchase-memory write and the server obta
  assert.equal(validatePayload(request),request);
  for(const change of [{purchaseId:nonce},{timeZone:'Mars/Orbit'},{timeZone:undefined}])assert.throws(()=>validatePayload({...request,...change}));
  for(const state of ['cancelled','foreign','early','token'] as const){
-  cancelled=state==='cancelled';creator=state==='foreign'?friend:owner;created=state==='early'?now-DAY_MS:now-3*DAY_MS;type=owner+'::core::GroupSplitEscrow<'+(state==='token'?'0x2::sui::SUI':SUI_MAINNET_USDC_TYPE)+'>';
+  cancelled=state==='cancelled';creator=state==='foreign'?friend:owner;created=state==='early'?now-CHECKIN_DELAY_MS+60_000:now-3*DAY_MS;type=owner+'::core::GroupSplitEscrow<'+(state==='token'?'0x2::sui::SUI':SUI_MAINNET_USDC_TYPE)+'>';
   await assert.rejects(executeMemoryRequest(request,nonce,deps));assert.equal(writes.length,0);
  }
  cancelled=false;creator=owner;created=now-3*DAY_MS;type=owner+'::core::GroupSplitEscrow<'+SUI_MAINNET_USDC_TYPE+'>';

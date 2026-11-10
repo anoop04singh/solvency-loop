@@ -91,3 +91,24 @@ test('analysis cannot inject financial rules and benchmark claims need actual di
  const rows=[{id:a(1),title:'Actual venue title',totalUnits:'60000000',people:3},{id:a(2),title:'Actual venue title',totalUnits:'90000000',people:3}];assert.deepEqual(publicBillBenchmarks([...rows,rows[0]]),[]);
  const b=publicBillBenchmarks([...rows,{id:a(3),title:'Actual venue title',totalUnits:'120000000',people:3}])[0];assert.equal(b.meanPerParticipantUnits,'30000000');assert.equal(b.count,3);assert.match(b.method,/not verified merchant/);
 });
+
+test('incoming recipients overlap only two independent contexts and all settle before a delivery finishes',async()=>{
+ const {v,c}=data(),digest='6'.repeat(44),splitId=a(81),creator=a(2),members=[a(1),a(30),a(31)];
+ const bill:OnChainGroupSplit={splitId,creator,title:'Concurrent fixture',totalBillUsdc:4,creatorShareUsdc:1,createdAtMs:now,fundingDeadlineMs:now+86400000,isActive:true,isCancelled:false,pendingUpfront:0,participants:members.map(debtor=>({debtor,amountOwedUsdc:1,requiresUpfrontEscrow:false,isFunded:false,isSettled:false,settledAtMs:0}))};
+ let running=0,maximum=0;const completed:string[]=[];
+ const deps:DeliveryDependencies={configuration:()=>({configured:true,address:v.executor}),packageId:()=>a(70),delegate:()=>v.memoryDelegate,
+  transaction:async()=>({digest,effects:{status:{status:'success'}},events:[{type:a(70)+'::core::SplitCreatedEvent',parsedJson:{split_id:splitId,creator}}]} as Awaited<ReturnType<DeliveryDependencies['transaction']>>),
+  object:async()=>({data:{objectId:splitId,version:'1',digest,content:{dataType:'moveObject',type:a(70)+'::core::GroupSplitEscrow',hasPublicTransfer:false,fields:{creator}}}}),
+  state:async wallet=>({...c.profile,wallet}),bill:async()=>bill,
+  allowance:async wallet=>({...v,owner:wallet,payees:[creator]}),receipt:async()=>null,
+  access:async(wallet,accountId)=>({accountId,owner:wallet,active:true,delegateAuthorized:true,delegateCount:1}),
+  execute:async(payload,nonce)=>{
+   running++;maximum=Math.max(maximum,running);await new Promise(resolve=>setTimeout(resolve,5));
+   bill.participants.find(p=>p.debtor===payload.walletAddress)!.isSettled=true;completed.push(payload.walletAddress);running--;
+   return {execution:{state:'confirmed',digest,kind:'settle',requestId:await autopilotRequestId(payload.walletAddress,nonce)}};
+  },
+ };
+ const result=await dispatchConfirmedBill(digest,deps);
+ assert.equal(maximum,2);assert.equal(running,0);assert.equal(result.length,3);
+ assert.deepEqual([...completed].sort(),[...members].sort());assert(bill.participants.every(p=>p.isSettled));
+});

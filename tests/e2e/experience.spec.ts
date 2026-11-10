@@ -20,7 +20,7 @@ test('landing explains each feature, exposes details and opens mandatory onboard
   await page.screenshot({ path: 'test-results/desktop-landing.png', animations: 'disabled' });
   const preview = page.getByRole('region', { name: 'Workflow preview' });
   await preview.getByRole('button', { name: 'Purchase reflection' }).click();
-  await expect(preview.getByText('Wait 48 hours', { exact: true })).toBeVisible();
+  await expect(preview.getByText('Wait 6 hours', { exact: true })).toBeVisible();
   await preview.getByRole('button', { name: 'Cooldown vault' }).click();
   await expect(preview.getByText('Withdraw', { exact: true })).toBeVisible();
   await page.getByText('Data and approvals', { exact: true }).click();
@@ -111,7 +111,7 @@ test('reduced motion uses the static palette and retains feature controls', asyn
   await page.goto('/');
   await expect(page.locator('.landing-hero-shader')).toHaveCount(0);
   await page.getByRole('button', { name: 'Purchase reflection' }).click();
-  await expect(page.getByText('Wait 48 hours', { exact: true })).toBeVisible();
+  await expect(page.getByText('Wait 6 hours', { exact: true })).toBeVisible();
 });
 
 test('landing remains readable and actionable without JavaScript', async ({ browser, baseURL }) => {

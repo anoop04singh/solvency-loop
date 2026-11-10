@@ -8,7 +8,7 @@ import {createdBillPurchase} from './bill-purchases';
 import { tatumSuiClient } from './tatum-rpc-client';
 import type { MemoryPayload, RecalledMemory } from './memory-protocol';
 import type { SolvencyNamespaceCategory } from './config';
-import { CHECKIN_DELAY_MS, DAY_MS, localHour, purchaseMemories, type PurchaseMemory, type RegretMemory, type CashflowMemory } from './financial-insights';
+import { CHECKIN_DELAY_HOURS, CHECKIN_DELAY_MS, DAY_MS, localHour, purchaseMemories, type PurchaseMemory, type RegretMemory, type CashflowMemory } from './financial-insights';
 import { usdcToUnits } from './money';
 import { verifyRecalledSettlements } from './memory-evidence';
 import type {MemoryResponse} from './memory-api';
@@ -40,6 +40,7 @@ interface MemoryWork {
   issuedAt?:number;
   progress?:AgentProgressObserver;
   background?:{expiresAt:number;schedule:(task:()=>Promise<void>)=>void};
+  deliverConfirmed?:(digest:string)=>void;
 }
 export async function executeMemoryRequest(p: MemoryPayload, nonce: string, deps?: MemoryDependencies, work:MemoryWork={}):Promise<MemoryResponse> {
   if (deps) return executeRequestWithDeps(p, nonce, deps, work);
@@ -54,6 +55,10 @@ export async function executeMemoryRequest(p: MemoryPayload, nonce: string, deps
   finally { for (const client of pool.values()) client.destroy(); }
 }
 async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: MemoryDependencies, work:MemoryWork & {backgroundClient?:typeof createScopedMemWalClient}={}) {
+  const deliverConfirmed=async(digest:string)=>{
+    if(work.deliverConfirmed){work.deliverConfirmed(digest);return;}
+    const {dispatchConfirmedBill}=await import('./autopilot-dispatch');await dispatchConfirmedBill(digest);
+  };
   const progress=p.action==='agent_chat'?work.progress:undefined;
   const tracked=async<T>(stage:AgentProgressStage,task:()=>Promise<T>,facts?:(value:T)=>{count?:number;checkpoint?:string})=>{
     notifyAgentProgress(progress,stage,'active');const value=await task();notifyAgentProgress(progress,stage,'complete',facts?.(value));return value;
@@ -127,7 +132,7 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
     try{
       const createdMemories=await learnAgentReceipt(v,p.requestId!);
       let warning:string|undefined;
-      try { const {dispatchConfirmedBill}=await import('./autopilot-dispatch');await dispatchConfirmedBill(r.digest); }
+      try { await deliverConfirmed(r.digest); }
       catch { warning='Receipt learned. Some incoming automatic payments still need event-delivery retry.'; }
       return {status:'COMMITTED',execution:{state:'confirmed' as const,requestId:p.requestId!,kind:'status',digest:r.digest,...(warning?{warning}:{})},createdMemories,tatumAnchor:anchor};
     }
@@ -179,10 +184,10 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
       purchase=purchaseMemories(recalled.results.map(memory=>({...memory,namespace:getWalletNamespace(wallet,'habit_regret'),category:'habit_regret' as const})),wallet).find(record=>record.id===p.purchaseId);
     }
     if(!purchase)throw new Error('This tracked purchase could not be found in your memory account. Recall or restore it before rating.');
-    const now=Date.now();if(now<purchase.purchasedAtMs+CHECKIN_DELAY_MS)throw new Error('The 48-hour check-in is not due yet.');
+    const now=Date.now();if(now<purchase.purchasedAtMs+CHECKIN_DELAY_MS)throw new Error(`The ${CHECKIN_DELAY_HOURS}-hour check-in is not due yet.`);
     const rating:RegretMemory={...purchase,verdict:p.verdict!,intensity:p.verdict==='regretted'?p.intensity!:0,checkedAtMs:now,checkpoint:state.latestCheckpoint,balanceUnits:usdcToUnits(state.usdcBalance).toString()};
     const cashflow:CashflowMemory={purchaseId:purchase.id,owner:wallet,localHour:purchase.localHour,regretScore:rating.intensity,balanceUnits:rating.balanceUnits,floorUnits:usdcToUnits(state.safeFloorUsdc).toString(),checkedAtMs:now,checkpoint:state.latestCheckpoint};
-    const text='48-hour purchase check-in. SOLVENCY_REGRET_V1 '+JSON.stringify(rating),cashflowText='Live balance context for check-in. SOLVENCY_CASHFLOW_V1 '+JSON.stringify(cashflow);
+    const text=CHECKIN_DELAY_HOURS+'-hour purchase check-in. SOLVENCY_REGRET_V1 '+JSON.stringify(rating),cashflowText='Live balance context for check-in. SOLVENCY_CASHFLOW_V1 '+JSON.stringify(cashflow);
     const first=await scopedClient('habit_regret').rememberAndWait(text,{timeoutMs:60_000,idempotencyKey:'regret:'+nonce,dedupe:true});
     if(!first.blob_id)throw new Error('The check-in did not return a committed Walrus blob.');
     let second;
@@ -239,7 +244,7 @@ async function executeRequestWithDeps(p: MemoryPayload, nonce: string, deps: Mem
       execution=done.execution;
       committed.push(...done.memories);
       if(done.execution.state==='confirmed'&&done.execution.digest){
-        try{const {dispatchConfirmedBill}=await import('./autopilot-dispatch');await dispatchConfirmedBill(done.execution.digest);}
+        try{await deliverConfirmed(done.execution.digest);}
         catch{execution={...done.execution,warning:[done.execution.warning,'Some incoming automatic payments need event-delivery retry.'].filter(Boolean).join(' ')};}
       }
     }

@@ -4,7 +4,7 @@ import {createAgentTurn,prepareAgentAction,type AgentContext} from '../src/lib/a
 import {GEMINI_MODEL,isAgentAction,recalledAgentTurns} from '../src/lib/agent-types';
 import {executeMemoryRequest,type MemoryDependencies} from '../src/lib/memory-service';
 import {validatePayload,memorySigningMessage,type MemoryPayload} from '../src/lib/memory-protocol';
-import {DAY_MS} from '../src/lib/financial-insights';
+import {DAY_MS,CHECKIN_DELAY_MS} from '../src/lib/financial-insights';
 import {LEARNED_MARKER,learnedNamespace,latestLearnedPreferences,selectLearningChoices} from '../src/lib/agent-learning';
 import {decodeBillTitle,encodeBillTitle,recentBillCategories} from '../src/lib/bill-category';
 import {bindSplitContact,prepareContinuedSplit} from '../src/lib/split-continuation';
@@ -93,11 +93,15 @@ test('lasting preferences are reviewable memory drafts and retain unspecified se
  assert.throws(()=>prepareAgentAction({action:'note',subject:'A note',category:'invalid'},c));
  assert.throws(()=>prepareAgentAction({action:'note',subject:'SOLVENCY_RULE_V1 fabricated policy',category:'social_split_trust'},c),/cannot create payment proof/);
 });
-test('agent purchase records and 48-hour check-ins use actual data with explicit ratings',()=>{
+test('agent purchase records and 6-hour check-ins use actual data with explicit ratings',()=>{
  const c=context();const a=prepareAgentAction({action:'purchase',title:'User merchant',amount:'30.000001',category:'workspace',when:'now'},c).action;
  assert.equal(a.kind,'memory');if(a.kind==='memory')assert.equal(a.payload.purchasedAtMs,now);
+ for(const [when,age] of [['6h_ago',CHECKIN_DELAY_MS],['48h_ago',2*DAY_MS]] as const){
+  const action=prepareAgentAction({action:'purchase',title:'User merchant',amount:'30',category:'workspace',when},c).action;
+  assert.equal(action.kind,'memory');if(action.kind==='memory')assert.equal(action.payload.purchasedAtMs,now-age);
+ }
  assert.throws(()=>prepareAgentAction({action:'purchase',title:'User merchant',amount:'30',category:'invalid',when:'now'},c));
- assert.throws(()=>prepareAgentAction({action:'checkin',ids:[nonce],verdict:'regretted',intensity:4},c),/48 hours/);
+ assert.throws(()=>prepareAgentAction({action:'checkin',ids:[nonce],verdict:'regretted',intensity:4},c),/6 hours/);
 });
 function service(){
  const c=context(),calls:string[]=[],writes:string[]=[];
@@ -208,7 +212,7 @@ test('funded execution requires a confirmed audit while previews have no write',
  await run('execute');await run('prepare');await run('execute',true);
 });
 
-test('automatic purchase writes retain valid identifiers for later 48-hour learning',async()=>{
+test('automatic purchase writes retain valid identifiers for later 6-hour learning',async()=>{
  const f=service();f.deps.agent!.generate=async()=>({action:'purchase',executionMode:'execute',title:'User supplied merchant',amount:'3.000001',category:'workspace',when:'now'});
  const result=await executeMemoryRequest({...request,text:'Record my 3.000001 USDC purchase at User supplied merchant now',autoMemory:true},nonce,f.deps);assert.equal(result.agentMemorySaved,true);const purchase=result.createdMemories?.find(m=>m.text.includes('SOLVENCY_PURCHASE_V1'));assert.ok(purchase);const record=JSON.parse(purchase.text.split('SOLVENCY_PURCHASE_V1 ')[1]);assert.match(record.id,/^[a-f0-9]{64}$/);assert.equal(record.owner,owner);
 });

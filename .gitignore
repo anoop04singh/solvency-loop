@@ -10,6 +10,7 @@ dist/
 test-results/
 .tools/
 playwright-report/
+.live-verification/
 *.tsbuildinfo
 move/**/build/
 # Platform markers and harness internals — not the user's source. (The bridge's

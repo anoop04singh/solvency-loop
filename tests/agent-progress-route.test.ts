@@ -26,3 +26,18 @@ test('streamed route errors redact secrets and preserve uncertainty once executi
   const result=await readAgentProgressResponse(response);assert.equal(result.ok,false);assert.equal(result.data.noFinancialExecution,!execution);assert.equal(result.data.code,'agent_reply');assert.equal(result.data.error,'Failure [redacted]');
  }}finally{if(previous===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=previous;}
 });
+
+test('confirmed delivery is registered after the response instead of holding the agent stream open',async()=>{
+ const tasks:(()=>Promise<void>)[]=[];
+ const response=await handleMemoryRequest(await signedRequest(),'agent_chat',{
+  verify:verifyMemoryEnvelope,after:task=>{tasks.push(task);},
+  execute:async(_payload,_nonce,_deps,work)=>{
+   assert.equal(typeof work?.deliverConfirmed,'function');
+   work!.deliverConfirmed!('5'.repeat(44));
+   return {status:'COMMITTED',execution:{state:'confirmed',digest:'5'.repeat(44),requestId:'a'.repeat(64),kind:'split'}};
+  },
+ });
+ const parsed=await readAgentProgressResponse(response);
+ assert.equal(parsed.data.execution?.state,'confirmed');
+ assert.equal(tasks.length,1,'Incoming work must be attached to the request lifetime without delaying its result.');
+});

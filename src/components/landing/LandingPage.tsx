@@ -27,10 +27,10 @@ const features = [
   },
   {
     id: 'reflection', icon: Clock3, accent: 'amber', label: 'Feature 02 / Purchase check-ins',
-    title: 'Reflect after 48 hours.',
-    copy: 'Record a purchase you want to revisit. After 48 hours, mark it Worth It or Regretted to give future spending suggestions more context.',
+    title: 'Reflect after 6 hours.',
+    copy: 'Record a purchase you want to revisit. After 6 hours, mark it Worth It or Regretted to give future spending suggestions more context.',
     points: ['Check in on purchases you record.', 'Choose whether to protect funds in a cooldown vault.'],
-    panel: { label: 'Purchase check-in', title: 'Think back on a purchase', tag: 'After 48 hours', rows: [
+    panel: { label: 'Purchase check-in', title: 'Think back on a purchase', tag: 'After 6 hours', rows: [
       { icon: ReceiptText, title: 'Record a purchase', detail: 'Add the amount and category yourself.' },
       { icon: CircleHelp, title: 'How do you feel about it now?', detail: 'Record your own rating in MemWal.' },
     ] },

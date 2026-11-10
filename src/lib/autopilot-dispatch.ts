@@ -53,7 +53,14 @@ async function deliver(digest:string,deps:DeliveryDependencies){
   const object=await deps.object({id:splitId,options:{showContent:true}});
   if(object.data?.content?.dataType!=='moveObject')throw Error('The delivered bill is unavailable.');
   const owner=requireAddress(creator||moveFields(object.data.content.fields).creator),bill=await deps.bill(owner,splitId);
-  for(const share of bill.participants){if(share.isSettled||share.isFunded||bill.isCancelled||(!bill.isActive&&!share.requiresUpfrontEscrow))continue;await run(share.debtor,splitId,'pay');}
+  const eligible=bill.participants.filter(share=>!share.isSettled&&!share.isFunded&&!bill.isCancelled&&(bill.isActive||share.requiresUpfrontEscrow));
+  // Recipient account/allowance contexts are independent. Keep at most two in
+  // flight; the dedicated executor still serializes building and signing.
+  // Await both outcomes before activation, including when one recipient fails.
+  for(let i=0;i<eligible.length;i+=2){
+   const results=await Promise.allSettled(eligible.slice(i,i+2).map(share=>run(share.debtor,splitId,'pay')));
+   const failure=results.find(result=>result.status==='rejected');if(failure?.status==='rejected')throw failure.reason;
+  }
   const fresh=await deps.bill(owner,splitId);if(!fresh.isActive&&!fresh.isCancelled&&fresh.pendingUpfront===0&&Date.now()<=fresh.fundingDeadlineMs)await run(owner,splitId,'activate');
  }
  for(const event of transaction.events||[]){if(event.type!==packageId+'::core::ShareSettledEvent')continue;const p=event.parsedJson as Record<string,unknown>;

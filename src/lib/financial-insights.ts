@@ -3,7 +3,8 @@ import { usdcToUnits, unitsToUsdc } from './money';
 import type { RecalledMemory } from './memory-protocol';
 
 export const DAY_MS = 86_400_000;
-export const CHECKIN_DELAY_MS = 2 * DAY_MS;
+export const CHECKIN_DELAY_HOURS = 6;
+export const CHECKIN_DELAY_MS = CHECKIN_DELAY_HOURS * 60 * 60 * 1000;
 export const MERCHANT_CATEGORIES = ['food_delivery', 'dining', 'groceries', 'shopping', 'entertainment', 'travel', 'housing', 'utilities', 'workspace', 'other'] as const;
 export type MerchantCategory = typeof MERCHANT_CATEGORIES[number];
 export const categoryLabels: Record<MerchantCategory,string> = {food_delivery:'Food delivery',dining:'Food & dining',groceries:'Groceries',shopping:'Shopping',entertainment:'Entertainment',travel:'Travel',housing:'Housing',utilities:'Utilities & subscriptions',workspace:'Work & learning',other:'Something else'};

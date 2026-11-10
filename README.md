@@ -2,6 +2,8 @@
 
 A Next.js 15 App Router application with a Gemini-led financial workspace, Sui Mainnet profiles, contact graphs, Circle USDC bill splits, upfront escrow, 24-hour cooldown vaults, and user-owned MemWal accounts with wallet-scoped Walrus memory. There is no application database or local user-state store.
 
+Read the [technical blog](./docs/SOLVENCYLOOP_TECHNICAL_BLOG.md) for the architecture, Tatum API mapping, Walrus integration and payment/regret learning. The accompanying [verification report](./docs/VERIFICATION_REPORT.md) includes Mainnet receipts, asset reconciliation and the measured limits of the current learning dataset.
+
 The latest extension adds opt-in quiet memory, a funded and revocable USDC agent allowance, event-driven incoming-share handling, confirmed-receipt learning, public self-published preferences and unanimously approved group conventions. **Existing installations need a compatible package upgrade and a new shared agent directory before funded automation can be enabled.** Follow [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md) for the exact Sui CLI upgrade, new environment variables, consent boundaries and event-delivery setup. Original core package/registry IDs stay unchanged; the new extension is disabled by default. Manual screens remain available.
 
 **Current state:** the object-factory contract is published on Sui Mainnet (see `move/solvency_loop/Published.toml`). The application provides wallet-owned onboarding, personal contacts, real USDC expenses, payment history, cooldown savings and user-authored memory. No sample contacts, preset bills or memory-seeding action are enabled. See `PRODUCTION_READINESS.md` for verification evidence and remaining wallet-approved checks.
@@ -141,7 +143,7 @@ Both MemWal factories inject the Tatum client. Pinned MemWal 0.1.11 does not nat
 
 Follow [USER_GUIDE.md](./USER_GUIDE.md) for real onboarding, personal contacts, expenses, memory and savings. The demo seeding action and named-contact defaults have been removed. No stored memories are required to complete onboarding.
 
-The workspace includes reviewed itemized splits with alcohol exclusions, adaptive deposit suggestions from reverified settlement events, 48-hour purchase check-ins, and a labelled spending-room/shield suggestion using personal regret and live cash-flow context. Guided popup steps precede manual writes and wallet actions. These manual flows use the existing core interface. Optional funded agent automation uses the new extension, deployment settings and explicit consent described in [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md).
+The workspace includes reviewed itemized splits with alcohol exclusions, adaptive deposit suggestions from reverified settlement events, 6-hour purchase check-ins, and a labelled spending-room/shield suggestion using personal regret and live cash-flow context. Guided popup steps precede manual writes and wallet actions. These manual flows use the existing core interface. Optional funded agent automation uses the new extension, deployment settings and explicit consent described in [AUTOPILOT_GUIDE.md](./AUTOPILOT_GUIDE.md).
 
 The application uses the supported GraphQL path on the fixed Tatum Mainnet gateway. Browser requests still use /api/tatum-rpc. See [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) for the reproduced 404 cause, request pacing, Retry-After handling and verification evidence.
 

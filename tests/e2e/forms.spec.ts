@@ -118,7 +118,7 @@ test('editing a preference contact clears selection and reviewed choices are sav
  await page.getByRole('button',{name:'Save to my memory'}).click();
  expect(await page.evaluate(()=>window.__formResult)).toEqual({wallet:'0x'+'3'.padStart(64,'0'),threshold:40,excludeAlcohol:true,fundingPolicy:'adaptive'});
 });
-test('48-hour check-in uses options and intensity scale, and recent purchases remain unavailable',async({page,request})=>{
+test('6-hour check-in uses options and intensity scale, and recent purchases remain unavailable',async({page,request})=>{
  await openForms(page,request);await page.getByRole('button',{name:'Regret',exact:true}).click();
  const recent=page.locator('.purchase-row').filter({hasText:'Fixture recent purchase'});await expect(recent.getByRole('button',{name:'Regretted',exact:true})).toBeDisabled();
  const due=page.locator('.purchase-row').filter({hasText:'Fixture merchant 2'});await due.getByRole('button',{name:'Regretted',exact:true}).click();
@@ -133,10 +133,10 @@ test('purchase entry reuses real merchant suggestions and waits for a reviewed s
  const category=page.getByRole('combobox',{name:'Purchase category'});await category.fill('Work');await category.press('ArrowDown');await category.press('Enter');await next(page);
  const merchant=page.getByRole('combobox',{name:'Merchant or place'});await merchant.fill('Fixture merchant 2');await merchant.press('ArrowDown');await merchant.press('Enter');await next(page);
  await page.getByLabel('Amount · USDC',{exact:true}).fill('30.000001');await next(page);
- await page.getByRole('radio',{name:'48 hours ago',exact:true}).check();await next(page);
+ await page.getByRole('radio',{name:'6 hours ago',exact:true}).check();await next(page);
  await expect(page.getByRole('heading',{name:'Save this purchase for a check-in?'})).toBeVisible();expect(await page.evaluate(()=>window.__formResult)).toBeUndefined();
  await page.getByRole('button',{name:'Save to my memory'}).click();
- expect(await page.evaluate(()=>window.__formResult)).toMatchObject({action:'record_purchase',merchantCategory:'workspace',merchant:'Fixture merchant 2',amountUsdc:'30.000001',purchasedAtMs:Date.UTC(2026,9,29,23)});
+ expect(await page.evaluate(()=>window.__formResult)).toMatchObject({action:'record_purchase',merchantCategory:'workspace',merchant:'Fixture merchant 2',amountUsdc:'30.000001',purchasedAtMs:Date.UTC(2026,9,31,17)});
 });
 test('profile and vault dialogs send a reviewed draft and only lock after final approval',async({page,request})=>{
  await openForms(page,request);await page.getByRole('button',{name:'Profile',exact:true}).click();await page.getByRole('button',{name:'Edit profile & reserve'}).click();
@@ -281,7 +281,7 @@ test('all supplied screen compositions render with the reference font and fit mo
  await page.evaluate(()=>window.scrollTo(0,0));
  await page.locator('.split-workspace').evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished.catch(()=>{})));});
  await page.screenshot({path:'test-results/reference-split.png',fullPage:true});
- await page.getByRole('tab',{name:/Regret Check-In/}).click();await page.locator('.panel').filter({hasText:'48-Hour Quick Check-In'}).evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished.catch(()=>{})));});await page.screenshot({path:'test-results/reference-regret.png',fullPage:true});
+ await page.getByRole('tab',{name:/Regret Check-In/}).click();await page.locator('.panel').filter({hasText:'6-Hour Quick Check-In'}).evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished.catch(()=>{})));});await page.screenshot({path:'test-results/reference-regret.png',fullPage:true});
  await page.getByRole('tab',{name:/Settle Shares/}).click();await page.evaluate(()=>window.scrollTo(0,0));await page.locator('.settlement-panel').evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished.catch(()=>{})));});await page.screenshot({path:'test-results/reference-settlement.png',fullPage:true});await page.getByRole('button',{name:'Proof Drawer',exact:true}).click();await page.locator('.proof-drawer').evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished.catch(()=>{})));});expect((await page.locator('.proof-drawer').boundingBox())!.x).toBe(832);await page.screenshot({path:'test-results/reference-proof.png'});
  expect(await page.evaluate(()=>document.fonts.check('15px "Hanken Grotesk"'))).toBe(true);await expect(page.getByText(/Predicted Regret|Calibrated|Seed 12|Zero Gas Unfreeze|ZK-STATE PROOFS/)).toHaveCount(0);await page.keyboard.press('Escape');
  await page.setViewportSize({width:360,height:800});
